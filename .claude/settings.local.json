@@ -23,7 +23,10 @@
       "Bash(timeout /t 20 /nobreak)",
       "Bash(./dev-with-api-key.bat)",
       "Bash(git add:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(npm run dev:*)"
     ]
   }
 }

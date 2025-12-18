@@ -7,6 +7,7 @@ pub mod config;
 pub mod api;
 pub mod agents;
 pub mod commands;
+pub mod artifacts;
 
 use std::sync::Mutex;
 use tauri::Manager;

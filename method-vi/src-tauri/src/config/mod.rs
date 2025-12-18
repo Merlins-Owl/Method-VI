@@ -1,9 +1,13 @@
+pub mod thresholds;
+
 use anyhow::{Context, Result};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+
+pub use thresholds::{ThresholdConfig, MetricThreshold, Critical6Thresholds};
 
 /// Application configuration settings
 #[derive(Debug, Clone, Serialize, Deserialize)]

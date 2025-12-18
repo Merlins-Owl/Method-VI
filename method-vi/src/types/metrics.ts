@@ -101,15 +101,15 @@ export interface ThresholdConfig {
 export const METRIC_METADATA: Record<string, MetricMetadata> = {
   CI: {
     name: 'CI',
-    fullName: 'Confidence Index',
-    description: 'Clarity and coherence of content',
+    fullName: 'Coherence Index',
+    description: 'Overall clarity and consistency of content',
     unit: 'score',
     inverseScale: false,
   },
   EV: {
     name: 'EV',
-    fullName: 'Expected Value',
-    description: 'Predicted edit distance from ideal',
+    fullName: 'Expansion Variance',
+    description: 'Deviation from baseline scope',
     unit: 'points',
     inverseScale: true, // Lower is better
   },
@@ -129,9 +129,9 @@ export const METRIC_METADATA: Record<string, MetricMetadata> = {
   },
   SEC: {
     name: 'SEC',
-    fullName: 'Stakeholder Engagement Coefficient',
-    description: 'Quality of human participation',
-    unit: '%',
+    fullName: 'Scope Expansion Count',
+    description: 'Number of approved scope expansions',
+    unit: 'count',
     inverseScale: false,
   },
   PCI: {
@@ -221,6 +221,7 @@ export function formatMetricValue(value: number, unit: string): string {
     case 'score':
       return value.toFixed(2);
     case 'points':
+    case 'count':
       return Math.round(value).toString();
     default:
       return value.toString();

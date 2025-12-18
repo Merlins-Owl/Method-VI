@@ -105,23 +105,48 @@
 
 ---
 
-### ⏳ Requirement 4: Dashboard shows radar chart
+### ✅ Requirement 4: Dashboard shows radar chart
 
-**Status**: ⚠️ **NOT YET IMPLEMENTED**
+**Status**: ✅ **IMPLEMENTED**
 
 **Current State**:
 - "Dashboard" button visible in footer metrics bar (right side)
-- Button is placeholder - clicking does nothing yet
-- Full dashboard with radar chart is **Phase 2** feature
+- Clicking opens full MetricsDashboard modal
+- Radar chart displays all 6 metrics on normalized 0-100% scale
+- Overall status banner shows pass/warning/fail state
+- Current values grid with color-coded metric cards
+- Threshold reference guide
 
-**To Implement** (if needed now):
-1. Create `MetricsDashboard` component
-2. Add radar chart library (Recharts or Chart.js)
-3. Implement radar chart showing all 6 metrics
-4. Add history graph with threshold lines
-5. Add trend analysis
+**Features**:
+- **Radar Chart**: Visual representation of all 6 metrics
+  - Uses Recharts library for smooth rendering
+  - Normalizes all metrics to 0-100% for comparison
+  - EV (lower is better) is inverted so higher = better on chart
+  - Shows tooltip with values on hover
+- **Overall Status**: At-a-glance health indicator
+  - Green: All metrics passing
+  - Yellow: Some warnings
+  - Red: Critical failures detected
+  - Gray: No metrics available yet
+- **Metric Details Grid**: Current values for all 6 metrics
+  - Color-coded cards (green/yellow/red/gray)
+  - Shows actual values and status
+- **Threshold Reference**: Quick guide to pass/warning/fail criteria
 
-**Note**: The specification says dashboard is a "nice to have" feature. Core explainability is already fully implemented in requirements 1-3.
+**How to Test**:
+1. Navigate to test page or run view
+2. Click "Dashboard" button in metrics bar (bottom right)
+3. Modal should open showing radar chart
+4. Verify all available metrics appear on chart
+5. Verify colors match metric status
+6. Close with X button
+
+**Expected Results**:
+- ✅ Dashboard button opens modal
+- ✅ Radar chart displays with all available metrics
+- ✅ Chart is responsive and interactive
+- ✅ Overall status reflects metric states correctly
+- ✅ Modal closes cleanly
 
 ---
 
@@ -252,36 +277,40 @@
 - [x] Requirement 1: Metrics bar shows 6 metrics
 - [x] Requirement 2: Color coding (green/yellow/red)
 - [x] Requirement 3: "Why this score?" expandable explanation
+- [x] Requirement 4: Dashboard with radar chart
 
-### Pending ⏳
-- [ ] Requirement 4: Dashboard with radar chart (Phase 2)
+### All Requirements Complete! 🎉
+All 4 core requirements from the Metric Explainability Contract are fully implemented and ready for testing.
 
 ---
 
 ## Next Steps
 
-### If Dashboard is Required Now:
-1. Install charting library:
-   ```bash
-   npm install recharts
-   # or
-   npm install chart.js react-chartjs-2
-   ```
+### Current State
+- ✅ All MVP requirements complete
+- ✅ Dashboard with radar chart implemented
+- ✅ Full metrics explainability system working
 
-2. Create `MetricsDashboard.tsx` component
+### Future Enhancements (Optional)
+1. **History Tracking**: Add metrics over time visualization
+   - Line chart showing metric trends across multiple runs
+   - Highlight improvement/degradation patterns
+   - Store historical metric values in database
 
-3. Implement:
-   - Radar chart showing all 6 metrics
-   - Threshold lines on chart
-   - History graph (metrics over time)
-   - Trend indicators
+2. **Trend Analysis**: Add predictive indicators
+   - Show trend arrows (↑↗→↘↓)
+   - Calculate rate of change
+   - Warn about deteriorating metrics
 
-4. Wire up Dashboard button in MetricsBar
+3. **Metric Comparisons**: Compare runs side-by-side
+   - Select two runs to compare
+   - Highlight differences
+   - Show improvement deltas
 
-### If Dashboard is Phase 2:
-- Current implementation is **complete** for MVP
-- All explainability requirements met
-- Dashboard can be added later without changes to existing code
+4. **Export Functionality**: Generate reports
+   - Export metrics to JSON/CSV
+   - Generate PDF reports with charts
+   - Share metrics dashboard as image
 
 ---
 

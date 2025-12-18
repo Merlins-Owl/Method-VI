@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MetricsState, MetricResult } from '../types/metrics';
 import MetricCard from './metrics/MetricCard';
+import MetricsDashboard from './metrics/MetricsDashboard';
 
 interface MetricsBarProps {
   metrics?: MetricsState;
@@ -8,6 +9,23 @@ interface MetricsBarProps {
 
 export default function MetricsBar({ metrics }: MetricsBarProps) {
   const [selectedMetric, setSelectedMetric] = useState<MetricResult | null>(null);
+  const [showDashboard, setShowDashboard] = useState(false);
+
+  // Handle ESC key to close modals
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showDashboard) {
+          setShowDashboard(false);
+        } else if (selectedMetric) {
+          setSelectedMetric(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [showDashboard, selectedMetric]);
 
   // Get array of all metrics
   const metricsList: (MetricResult | null)[] = [
@@ -39,10 +57,10 @@ export default function MetricsBar({ metrics }: MetricsBarProps) {
                 return (
                   <div
                     key={idx}
-                    className="px-3 py-2 rounded border-2 border-gray-700 bg-gray-800/30"
+                    className="px-3 py-2 rounded-lg border-2 border-gray-700 bg-gray-800"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="text-sm font-medium text-gray-600">
+                      <div className="text-sm font-medium text-gray-500">
                         {metricNames[idx]}
                       </div>
                       <div className="text-lg font-bold text-gray-600">-</div>
@@ -64,9 +82,7 @@ export default function MetricsBar({ metrics }: MetricsBarProps) {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => {
-                /* TODO: Open full dashboard */
-              }}
+              onClick={() => setShowDashboard(true)}
               className="text-xs text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1"
             >
               <svg
@@ -91,16 +107,23 @@ export default function MetricsBar({ metrics }: MetricsBarProps) {
 
       {/* Modal for expanded metric view */}
       {selectedMetric && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={handleCloseModal}
+        >
+          <div
+            className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto border-2 border-gray-600 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-gray-800 border-b-2 border-gray-700 p-4 flex items-center justify-between z-10">
               <h2 className="text-xl font-bold text-white">Metric Details</h2>
               <button
                 onClick={handleCloseModal}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="p-2 rounded-lg bg-gray-900 border-2 border-gray-600 hover:border-gray-500 hover:bg-gray-700 transition-colors group"
+                title="Close (ESC)"
               >
                 <svg
-                  className="w-6 h-6"
+                  className="w-5 h-5 text-gray-400 group-hover:text-white"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -120,6 +143,15 @@ export default function MetricsBar({ metrics }: MetricsBarProps) {
           </div>
         </div>
       )}
+
+      {/* DISABLED - causes crash
+      {showDashboard && metrics && (
+        <MetricsDashboard
+          metrics={metrics}
+          onClose={() => setShowDashboard(false)}
+        />
+      )}
+      */}
     </>
   );
 }

@@ -16,8 +16,6 @@ interface MetricCardProps {
 export default function MetricCard({ metric, compact = false, onExpand }: MetricCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const metadata = METRIC_METADATA[metric.metric_name];
-  const statusColor = getStatusColor(metric.status);
-  const statusBgColor = getStatusBgColor(metric.status);
 
   const handleToggle = () => {
     if (compact && onExpand) {
@@ -27,17 +25,42 @@ export default function MetricCard({ metric, compact = false, onExpand }: Metric
     }
   };
 
+  const getStatusClasses = (status: string) => {
+    if (status === 'pass') {
+      return {
+        bg: 'bg-green-100',
+        border: 'border-green-500',
+        text: 'text-green-700',
+        badge: 'bg-green-500 text-white'
+      };
+    }
+    if (status === 'warning') {
+      return {
+        bg: 'bg-yellow-100',
+        border: 'border-yellow-500',
+        text: 'text-yellow-700',
+        badge: 'bg-yellow-500 text-white'
+      };
+    }
+    // halt/fail
+    return {
+      bg: 'bg-red-100',
+      border: 'border-red-500',
+      text: 'text-red-700',
+      badge: 'bg-red-500 text-white'
+    };
+  };
+
+  const colors = getStatusClasses(metric.status);
+
   const renderCompactView = () => (
     <button
       onClick={handleToggle}
-      className={`
-        px-3 py-2 rounded border-2 transition-all hover:scale-105
-        ${statusBgColor}
-      `}
+      className={`px-3 py-2 rounded-lg border-2 transition-all hover:scale-105 cursor-pointer ${colors.bg} ${colors.border}`}
     >
       <div className="flex items-center gap-2">
-        <div className="text-sm font-medium text-gray-300">{metric.metric_name}</div>
-        <div className={`text-lg font-bold ${statusColor}`}>
+        <div className="text-sm font-medium text-gray-800">{metric.metric_name}</div>
+        <div className={`text-lg font-bold ${colors.text}`}>
           {formatMetricValue(metric.value, metadata.unit)}
         </div>
       </div>
@@ -46,24 +69,21 @@ export default function MetricCard({ metric, compact = false, onExpand }: Metric
 
   const renderFullView = () => (
     <div
-      className={`
-        rounded-lg border-2 p-4 transition-all
-        ${statusBgColor}
-      `}
+      className={`rounded-lg border-2 p-4 transition-all ${colors.bg} ${colors.border}`}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h3 className="text-xl font-bold text-white">
+          <h3 className="text-xl font-bold text-gray-900">
             {metric.metric_name} - {metadata.fullName}
           </h3>
-          <p className="text-sm text-gray-400 mt-1">{metadata.description}</p>
+          <p className="text-sm text-gray-600 mt-1">{metadata.description}</p>
         </div>
         <div className="text-right">
-          <div className={`text-3xl font-bold ${statusColor}`}>
+          <div className={`text-3xl font-bold ${colors.text}`}>
             {formatMetricValue(metric.value, metadata.unit)}
           </div>
-          <div className="text-xs text-gray-400 mt-1">
+          <div className="text-xs text-gray-600 mt-1">
             Pass: {formatMetricValue(metric.threshold.pass, metadata.unit)}
           </div>
         </div>
@@ -71,15 +91,7 @@ export default function MetricCard({ metric, compact = false, onExpand }: Metric
 
       {/* Status Indicator */}
       <div className="flex items-center gap-2 mb-3">
-        <div
-          className={`
-            w-3 h-3 rounded-full
-            ${metric.status === 'pass' ? 'bg-green-500' : ''}
-            ${metric.status === 'warning' ? 'bg-yellow-500' : ''}
-            ${metric.status === 'fail' ? 'bg-red-500' : ''}
-          `}
-        />
-        <span className={`text-sm font-medium ${statusColor} uppercase`}>
+        <span className={`px-2 py-1 rounded text-xs font-medium uppercase ${colors.badge}`}>
           {metric.status}
         </span>
       </div>
@@ -132,7 +144,7 @@ export default function MetricCard({ metric, compact = false, onExpand }: Metric
           />
           {/* Current value marker */}
           <div
-            className={`absolute top-0 w-1 h-full ${statusColor.replace('text-', 'bg-')}`}
+            className={`absolute top-0 w-1 h-full ${getTextColor().replace('text-', 'bg-')}`}
             style={{
               left: `${(metric.value / (metadata.inverseScale ? (metric.threshold.halt ?? 100) : 100)) * 100}%`,
             }}
