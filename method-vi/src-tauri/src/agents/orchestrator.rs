@@ -1,0 +1,632 @@
+use anyhow::{Context as AnyhowContext, Result};
+use chrono::Utc;
+use log::{debug, info, warn};
+
+use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
+use crate::context::{ContextManager, Mode, Role, RunContext, Signal as ContextSignal};
+use crate::ledger::{EntryType, LedgerEntry, LedgerManager, LedgerPayload, LedgerState};
+use crate::signals::{SignalPayload, SignalRouter, SignalType};
+
+/// Run state for tracking Method-VI session progress
+#[derive(Debug, Clone)]
+pub enum RunState {
+    /// Step 0: Intent capture and pattern query
+    Step0Active,
+
+    /// Waiting for gate approval to proceed to Step 1
+    Step0GatePending,
+
+    /// Step 1: Charter and baseline creation
+    Step1Active,
+
+    /// Waiting for gate approval (baseline frozen)
+    Step1GatePending,
+
+    /// Step 2-6: Future steps (not yet implemented)
+    FutureStep(u8),
+
+    /// Run completed
+    Completed,
+
+    /// Run halted
+    Halted { reason: String },
+}
+
+impl RunState {
+    /// Get the step number for this state
+    pub fn step_number(&self) -> u8 {
+        match self {
+            RunState::Step0Active | RunState::Step0GatePending => 0,
+            RunState::Step1Active | RunState::Step1GatePending => 1,
+            RunState::FutureStep(n) => *n,
+            RunState::Completed => 7,
+            RunState::Halted { .. } => 255, // Special value for halted
+        }
+    }
+
+    /// Check if this state is waiting for gate approval
+    pub fn is_gate_pending(&self) -> bool {
+        matches!(
+            self,
+            RunState::Step0GatePending | RunState::Step1GatePending
+        )
+    }
+}
+
+// IntentSummary is now imported from scope_pattern module
+
+/// Orchestrator: Master coordinator for Method-VI 7-step process
+///
+/// The Orchestrator manages:
+/// - Step sequence control (Steps 0 → 6.5 → Closure)
+/// - Gate Protocol enforcement
+/// - Governance role activation
+/// - Signal emission and routing
+/// - State persistence via Ledger
+pub struct Orchestrator {
+    /// Unique run identifier: {YYYY-MM-DD}-{label}
+    pub run_id: String,
+
+    /// Current state in the Method-VI process
+    pub state: RunState,
+
+    /// Active governance role
+    pub active_role: Role,
+
+    /// Operational mode (always Standard for MVP)
+    pub mode: Mode,
+
+    /// Ledger manager for recording all actions
+    ledger: LedgerManager,
+
+    /// Signal router for workflow signals
+    signal_router: SignalRouter,
+
+    /// Captured intent summary from Step 0
+    pub intent_summary: Option<IntentSummary>,
+
+    /// Scope & Pattern Agent (optional - if None, uses stub)
+    scope_agent: Option<ScopePatternAgent>,
+}
+
+impl Orchestrator {
+    /// Set the Scope & Pattern Agent for this orchestrator
+    ///
+    /// This allows the orchestrator to use the real agent instead of the stub.
+    pub fn with_scope_agent(mut self, agent: ScopePatternAgent) -> Self {
+        self.scope_agent = Some(agent);
+        self
+    }
+
+    /// Create a new Orchestrator for a run
+    ///
+    /// # Arguments
+    /// * `label` - User-provided label for the run (e.g., "Analysis", "Feature-X")
+    pub fn new(label: &str) -> Self {
+        let date = Utc::now().format("%Y-%m-%d").to_string();
+        let run_id = format!("{}-{}", date, label);
+
+        info!("Initializing new Method-VI run: {}", run_id);
+
+        Orchestrator {
+            run_id,
+            state: RunState::Step0Active,
+            active_role: Role::Observer, // Start as Observer
+            mode: Mode::Standard,        // Always Standard for MVP
+            ledger: LedgerManager::new(),
+            signal_router: SignalRouter::new(),
+            intent_summary: None,
+            scope_agent: None, // Will be set via with_scope_agent()
+        }
+    }
+
+    /// Get the current run context for generating Steno-Ledger
+    pub fn get_run_context(&self) -> RunContext {
+        RunContext {
+            run_id: self.run_id.clone(),
+            step: self.state.step_number() as i32,
+            role: self.active_role.clone(),
+            ci: None, // Will be populated by Governance & Telemetry Agent
+            ev: None, // Will be populated by Governance & Telemetry Agent
+            mode: self.mode.clone(),
+            signal: self.get_context_signal(),
+        }
+    }
+
+    /// Get the current context signal for Steno-Ledger
+    fn get_context_signal(&self) -> ContextSignal {
+        match &self.state {
+            RunState::Step0Active => ContextSignal::Initializing,
+            RunState::Step0GatePending => ContextSignal::AwaitingGate,
+            RunState::Step1Active => ContextSignal::Active,
+            RunState::Step1GatePending => ContextSignal::AwaitingGate,
+            RunState::Completed => ContextSignal::Completed,
+            RunState::Halted { .. } => ContextSignal::Halted,
+            _ => ContextSignal::Active,
+        }
+    }
+
+    /// Generate Steno-Ledger string for prepending to agent prompts
+    pub fn generate_steno_ledger(&self) -> String {
+        let context = self.get_run_context();
+        ContextManager::generate_steno_ledger(&context)
+    }
+
+    /// Execute Step 0: Intent capture and pattern query
+    ///
+    /// Step 0 flow:
+    /// 1. Record run start in ledger
+    /// 2. Call Scope & Pattern Agent to capture intent (real or stubbed)
+    /// 3. Emit Ready_for_Step_1 signal
+    /// 4. Transition to gate pending state
+    ///
+    /// # Returns
+    /// The captured intent summary
+    pub async fn execute_step_0(&mut self, user_intent: &str) -> Result<IntentSummary> {
+        info!("=== Executing Step 0: Intent Capture ===");
+
+        // Validate state
+        if !matches!(self.state, RunState::Step0Active) {
+            anyhow::bail!("Cannot execute Step 0 - current state: {:?}", self.state);
+        }
+
+        // Record run start in ledger
+        let payload = LedgerPayload {
+            action: "run_start".to_string(),
+            inputs: Some(serde_json::json!({
+                "run_id": self.run_id,
+                "user_intent": user_intent,
+            })),
+            outputs: None,
+            rationale: Some("Initializing Method-VI run".to_string()),
+        };
+
+        let entry = self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Signal,
+            Some(0),
+            Some("Observer"),
+            payload,
+        );
+
+        debug!("Ledger entry created: {:?}", entry.hash);
+
+        // Call Scope & Pattern Agent to capture intent (real or stubbed)
+        let intent_summary = if let Some(agent) = &self.scope_agent {
+            // Use real agent
+            info!("Using real Scope & Pattern Agent");
+            let steno_ledger = self.generate_steno_ledger();
+            agent
+                .interpret_intent(&self.run_id, user_intent, &steno_ledger)
+                .await?
+        } else {
+            // Use stub for testing
+            info!("Using stubbed Scope & Pattern Agent");
+            self.stub_scope_and_pattern_agent(user_intent)?
+        };
+
+        info!("Intent captured: {}", intent_summary.primary_goal);
+        info!("Confidence: {}", intent_summary.confidence_score);
+        info!("Category: {}", intent_summary.intent_category);
+
+        // Store intent summary
+        self.intent_summary = Some(intent_summary.clone());
+
+        // Record intent capture in ledger
+        let payload = LedgerPayload {
+            action: "intent_captured".to_string(),
+            inputs: Some(serde_json::json!({
+                "user_intent": user_intent,
+            })),
+            outputs: Some(serde_json::json!({
+                "artifact_id": intent_summary.artifact_id,
+                "primary_goal": intent_summary.primary_goal,
+                "confidence_score": intent_summary.confidence_score,
+                "intent_category": intent_summary.intent_category,
+            })),
+            rationale: Some("Scope & Pattern Agent completed intent analysis".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(0),
+            Some("Observer"),
+            payload,
+        );
+
+        // Emit Ready_for_Step_1 signal (GATE signal)
+        info!("Emitting Ready_for_Step_1 signal (GATE)");
+
+        let signal_payload = SignalPayload {
+            step_from: 0,
+            step_to: 1,
+            artifacts_produced: vec!["intent-anchor".to_string()],
+            metrics_snapshot: None,
+            gate_required: true,
+        };
+
+        let signal = self.signal_router.emit_signal(
+            SignalType::ReadyForStep1,
+            &self.run_id,
+            signal_payload,
+        );
+
+        debug!("Signal emitted: {:?}", signal.hash);
+
+        // Record gate signal in ledger
+        let payload = LedgerPayload {
+            action: "gate_signal_emitted".to_string(),
+            inputs: Some(serde_json::json!({
+                "signal_type": "Ready_for_Step_1",
+                "gate_required": true,
+            })),
+            outputs: Some(serde_json::json!({
+                "signal_hash": signal.hash,
+            })),
+            rationale: Some("Step 0 complete, awaiting human approval to proceed".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Gate,
+            Some(0),
+            Some("Observer"),
+            payload,
+        );
+
+        // Transition to gate pending state
+        self.state = RunState::Step0GatePending;
+
+        info!("Step 0 complete - awaiting gate approval");
+        info!("State: {:?}", self.state);
+
+        Ok(intent_summary)
+    }
+
+    /// Approve the gate and proceed to the next step
+    ///
+    /// This should be called by the UI when the human approves the gate.
+    ///
+    /// # Returns
+    /// True if gate was approved and state transitioned
+    pub fn approve_gate(&mut self, approver: &str) -> Result<bool> {
+        info!("Gate approval requested by: {}", approver);
+
+        match &self.state {
+            RunState::Step0GatePending => {
+                // Record gate approval in ledger
+                let payload = LedgerPayload {
+                    action: "gate_approved".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "gate": "Ready_for_Step_1",
+                        "approver": approver,
+                    })),
+                    outputs: None,
+                    rationale: Some("Human approved progression to Step 1".to_string()),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(0),
+                    Some("Observer"),
+                    payload,
+                );
+
+                // Transition to Step 1
+                self.state = RunState::Step1Active;
+                self.active_role = Role::Conductor; // Role transitions Observer → Conductor
+
+                info!("✓ Gate approved - transitioning to Step 1");
+                info!("Active role: {:?}", self.active_role);
+
+                Ok(true)
+            }
+            RunState::Step1GatePending => {
+                // Future: Handle Step 1 gate approval (baseline frozen)
+                warn!("Step 1 gate approval not yet implemented");
+                Ok(false)
+            }
+            _ => {
+                anyhow::bail!("No gate pending - current state: {:?}", self.state);
+            }
+        }
+    }
+
+    /// Reject the gate (human decides not to proceed)
+    pub fn reject_gate(&mut self, rejector: &str, reason: &str) -> Result<()> {
+        info!("Gate rejection by: {} - reason: {}", rejector, reason);
+
+        if !self.state.is_gate_pending() {
+            anyhow::bail!("No gate pending - current state: {:?}", self.state);
+        }
+
+        // Record gate rejection in ledger
+        let payload = LedgerPayload {
+            action: "gate_rejected".to_string(),
+            inputs: Some(serde_json::json!({
+                "rejector": rejector,
+                "reason": reason,
+            })),
+            outputs: None,
+            rationale: Some("Human rejected gate - run terminating".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(self.state.step_number() as i32),
+            Some(ContextManager::get_role_abbreviation(&self.active_role).as_str()),
+            payload,
+        );
+
+        // Transition to halted state
+        self.state = RunState::Halted {
+            reason: reason.to_string(),
+        };
+
+        info!("Run halted due to gate rejection");
+
+        Ok(())
+    }
+
+    /// Validate an action is allowed in the current state
+    ///
+    /// Uses the Ledger Manager to validate state transitions
+    pub fn validate_action(&self, action: &str) -> Result<bool> {
+        let ledger_state = match &self.state {
+            RunState::Step0Active => LedgerState::Step0Active,
+            RunState::Step0GatePending | RunState::Step1GatePending => LedgerState::GatePending,
+            RunState::Step1Active => LedgerState::Normal,
+            RunState::Halted { .. } => LedgerState::HaltActive,
+            _ => LedgerState::Normal,
+        };
+
+        let validation = self.ledger.validate_action(&ledger_state, action);
+
+        if !validation.allowed {
+            if let Some(reason) = validation.reason {
+                anyhow::bail!("Action '{}' not allowed: {}", action, reason);
+            }
+        }
+
+        Ok(validation.allowed)
+    }
+
+    /// Get the current ledger state
+    pub fn get_ledger_state(&self) -> LedgerState {
+        match &self.state {
+            RunState::Step0Active => LedgerState::Step0Active,
+            RunState::Step0GatePending | RunState::Step1GatePending => LedgerState::GatePending,
+            RunState::Step1Active => LedgerState::BaselineFrozen, // After baseline is frozen
+            RunState::Halted { .. } => LedgerState::HaltActive,
+            _ => LedgerState::Normal,
+        }
+    }
+
+    /// Get reference to the signal router (for testing/inspection)
+    pub fn get_signal_router(&self) -> &SignalRouter {
+        &self.signal_router
+    }
+
+    /// Get reference to the ledger manager (for testing/inspection)
+    pub fn get_ledger(&self) -> &LedgerManager {
+        &self.ledger
+    }
+
+    /// STUB: Scope & Pattern Agent
+    ///
+    /// This is a placeholder that returns a mock intent summary.
+    /// The real implementation will call Claude with the Steno-Ledger prepended.
+    fn stub_scope_and_pattern_agent(&self, user_intent: &str) -> Result<IntentSummary> {
+        debug!("STUB: Calling Scope & Pattern Agent");
+
+        // Generate Steno-Ledger for the agent call
+        let steno_ledger = self.generate_steno_ledger();
+        debug!("Steno-Ledger: {}", steno_ledger);
+
+        // Create a mock IntentSummary artifact
+        let timestamp = Utc::now().format("%Y%m%d%H%M%S").to_string();
+        let artifact_id = format!("{}-intent-summary-{}", self.run_id, timestamp);
+        let created_at = Utc::now().to_rfc3339();
+
+        let mut summary = IntentSummary {
+            artifact_id,
+            artifact_type: "Intent_Summary".to_string(),
+            run_id: self.run_id.clone(),
+            step_origin: 0,
+            created_at,
+            hash: String::new(), // Will be computed below
+            parent_hash: None,
+            dependencies: vec![],
+            intent_anchor_link: None,
+            is_immutable: false,
+            author: "scope-pattern-agent-stub".to_string(),
+            governance_role: "Observer".to_string(),
+            user_request: user_intent.to_string(),
+            primary_goal: format!("Accomplish: {}", user_intent),
+            audience: "General users".to_string(),
+            expected_outcome: format!("Successfully implement: {}", user_intent),
+            intent_category: "Operational".to_string(),
+            confidence_score: 75,
+            confidence_explanation: "Moderate confidence - based on stub analysis".to_string(),
+            request_specificity: "Medium".to_string(),
+            scope_definition_clarity: "Partial".to_string(),
+            success_criteria_state: "Implied".to_string(),
+            questions_for_clarification: vec!["None - intent is clear (stub mode)".to_string()],
+            likely_in_scope: vec![
+                format!("Core functionality: {}", user_intent),
+                "Essential features".to_string(),
+            ],
+            likely_out_of_scope: vec![
+                "Unrelated features".to_string(),
+                "Scope creep items".to_string(),
+            ],
+            edge_cases: vec![],
+        };
+
+        // Compute hash
+        summary.hash = summary.compute_hash();
+
+        Ok(summary)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_orchestrator_creation() {
+        let orch = Orchestrator::new("test-run");
+
+        assert!(orch.run_id.contains("test-run"));
+        assert!(matches!(orch.state, RunState::Step0Active));
+        assert!(matches!(orch.active_role, Role::Observer));
+        assert!(matches!(orch.mode, Mode::Standard));
+    }
+
+    #[test]
+    fn test_run_id_format() {
+        let orch = Orchestrator::new("Analysis");
+        let date = Utc::now().format("%Y-%m-%d").to_string();
+        let expected = format!("{}-Analysis", date);
+
+        assert_eq!(orch.run_id, expected);
+    }
+
+    #[test]
+    fn test_steno_ledger_generation() {
+        let orch = Orchestrator::new("test");
+        let steno = orch.generate_steno_ledger();
+
+        assert!(steno.contains("RUN:"));
+        assert!(steno.contains("S:0"));
+        assert!(steno.contains("R:OBS"));
+        assert!(steno.contains("M:STD"));
+    }
+
+    #[tokio::test]
+    async fn test_step_0_execution() {
+        let mut orch = Orchestrator::new("test");
+
+        let result = orch.execute_step_0("Build a user authentication system").await;
+        assert!(result.is_ok());
+
+        let intent = result.unwrap();
+        assert_eq!(intent.user_request, "Build a user authentication system");
+        assert!(!intent.primary_goal.is_empty());
+        assert!(intent.confidence_score > 0);
+
+        // Should transition to gate pending
+        assert!(matches!(orch.state, RunState::Step0GatePending));
+        assert!(orch.intent_summary.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_gate_approval() {
+        let mut orch = Orchestrator::new("test");
+
+        // Execute Step 0 first
+        orch.execute_step_0("Test intent").await.unwrap();
+        assert!(matches!(orch.state, RunState::Step0GatePending));
+
+        // Approve gate
+        let result = orch.approve_gate("Human Reviewer");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // Should transition to Step 1
+        assert!(matches!(orch.state, RunState::Step1Active));
+        assert!(matches!(orch.active_role, Role::Conductor));
+    }
+
+    #[tokio::test]
+    async fn test_gate_rejection() {
+        let mut orch = Orchestrator::new("test");
+
+        // Execute Step 0 first
+        orch.execute_step_0("Test intent").await.unwrap();
+        assert!(matches!(orch.state, RunState::Step0GatePending));
+
+        // Reject gate
+        let result = orch.reject_gate("Human Reviewer", "Scope too broad");
+        assert!(result.is_ok());
+
+        // Should transition to halted
+        assert!(matches!(orch.state, RunState::Halted { .. }));
+    }
+
+    #[test]
+    fn test_gate_approval_without_pending() {
+        let mut orch = Orchestrator::new("test");
+
+        // Try to approve gate without executing Step 0
+        let result = orch.approve_gate("Human");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_run_state_step_numbers() {
+        assert_eq!(RunState::Step0Active.step_number(), 0);
+        assert_eq!(RunState::Step0GatePending.step_number(), 0);
+        assert_eq!(RunState::Step1Active.step_number(), 1);
+        assert_eq!(RunState::Step1GatePending.step_number(), 1);
+        assert_eq!(RunState::FutureStep(3).step_number(), 3);
+        assert_eq!(RunState::Completed.step_number(), 7);
+    }
+
+    #[test]
+    fn test_run_state_is_gate_pending() {
+        assert!(RunState::Step0GatePending.is_gate_pending());
+        assert!(RunState::Step1GatePending.is_gate_pending());
+        assert!(!RunState::Step0Active.is_gate_pending());
+        assert!(!RunState::Step1Active.is_gate_pending());
+    }
+
+    #[test]
+    fn test_action_validation() {
+        let orch = Orchestrator::new("test");
+
+        // In Step 0, intent capture should be allowed
+        let result = orch.validate_action("intent_capture");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // But validation should not be allowed yet
+        let result = orch.validate_action("validation");
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ledger_recording() {
+        let mut orch = Orchestrator::new("test");
+
+        // Execute Step 0
+        orch.execute_step_0("Test intent").await.unwrap();
+
+        // Check that ledger entries were created
+        let entries = orch.ledger.get_entries(&orch.run_id);
+        assert!(!entries.is_empty());
+
+        // Should have at least: run_start, intent_captured, gate_signal_emitted
+        assert!(entries.len() >= 3);
+    }
+
+    #[tokio::test]
+    async fn test_signal_chain() {
+        let mut orch = Orchestrator::new("test");
+
+        // Execute Step 0
+        orch.execute_step_0("Test intent").await.unwrap();
+
+        // Check that signal was emitted
+        let chain = orch.signal_router.get_signal_chain(&orch.run_id);
+        assert_eq!(chain.len(), 1);
+
+        let signal = &chain[0];
+        assert!(matches!(signal.signal_type, SignalType::ReadyForStep1));
+        assert!(signal.payload.gate_required);
+    }
+}

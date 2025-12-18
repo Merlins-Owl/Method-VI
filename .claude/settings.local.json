@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create tauri-app@latest)",
+      "Bash(npm create tauri-app@latest method-vi -- --template react-ts --manager npm -y)",
+      "Bash(npm install:*)",
+      "Bash(tree:*)",
+      "Bash(npm run tauri build:*)",
+      "Bash(npm run tauri:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo run:*)",
+      "Bash(set:*)",
+      "Bash(ANTHROPIC_API_KEY=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 cargo run:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(tasklist:*)",
+      "Bash(cargo check:*)",
+      "Bash(timeout /t 15 /nobreak)",
+      "Bash(dev-with-api-key.bat)",
+      "Bash(timeout /t 20 /nobreak)",
+      "Bash(./dev-with-api-key.bat)",
+      "Bash(git add:*)",
+      "Bash(git init:*)"
+    ]
+  }
+}
