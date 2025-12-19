@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
 import MainLayout from '../components/layout/MainLayout';
 import Step0View from '../components/steps/Step0View';
+import Step1View from '../components/steps/Step1View';
 import { MetricsState } from '../types/metrics';
 import { generateMockMetrics, MOCK_SCENARIOS } from '../utils/mockMetrics';
 
@@ -48,9 +49,6 @@ export default function RunView() {
 
         console.log('Gate approved, moving to Step 1');
         setCurrentStep(1);
-
-        // For now, show a placeholder for Step 1
-        // In future, this will render Step1View component
       } catch (error) {
         console.error('Failed to approve gate:', error);
         alert(`Failed to approve gate: ${error}`);
@@ -58,6 +56,11 @@ export default function RunView() {
     } else {
       console.log('User chose to adjust intent');
     }
+  };
+
+  const handleBaselineFrozen = async () => {
+    console.log('Baseline frozen, moving to Step 2');
+    setCurrentStep(2);
   };
 
   // Render step-specific view
@@ -73,19 +76,10 @@ export default function RunView() {
 
       case 1:
         return (
-          <div className="max-w-4xl mx-auto p-8">
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-              <h2 className="text-3xl font-bold text-white mb-4">
-                Step 1: Charter & Baseline
-              </h2>
-              <p className="text-gray-300">
-                This step is not yet implemented.
-              </p>
-              <p className="text-gray-400 mt-4">
-                Coming soon: Charter creation and baseline freezing.
-              </p>
-            </div>
-          </div>
+          <Step1View
+            runId={runId || ''}
+            onBaselineFrozen={handleBaselineFrozen}
+          />
         );
 
       default:

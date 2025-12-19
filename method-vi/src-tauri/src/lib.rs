@@ -55,6 +55,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::start_step_0,
+            commands::execute_step_1,
             commands::approve_gate,
             commands::reject_gate,
             commands::submit_clarifications,
