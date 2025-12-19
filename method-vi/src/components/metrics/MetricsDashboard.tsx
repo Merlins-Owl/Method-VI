@@ -1,19 +1,38 @@
 import { MetricsState, METRIC_METADATA } from '../../types/metrics';
-import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  ResponsiveContainer,
-  Tooltip,
-  Legend,
-} from 'recharts';
 
 interface MetricsDashboardProps {
   metrics: MetricsState;
   onClose: () => void;
 }
+
+// Color constants for inline styles
+const COLORS = {
+  green: {
+    bg: 'rgba(34, 197, 94, 0.2)',
+    border: 'rgba(34, 197, 94, 0.5)',
+    text: '#22c55e',
+  },
+  yellow: {
+    bg: 'rgba(234, 179, 8, 0.2)',
+    border: 'rgba(234, 179, 8, 0.5)',
+    text: '#eab308',
+  },
+  red: {
+    bg: 'rgba(239, 68, 68, 0.2)',
+    border: 'rgba(239, 68, 68, 0.5)',
+    text: '#ef4444',
+  },
+  gray: {
+    bg: 'rgba(107, 114, 128, 0.5)',
+    border: '#4b5563',
+    text: '#4b5563',
+  },
+  blue: {
+    bg: 'rgba(59, 130, 246, 0.1)',
+    border: 'rgba(59, 130, 246, 0.3)',
+    text: '#3b82f6',
+  },
+};
 
 export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardProps) {
   // Prepare data for radar chart
@@ -98,35 +117,57 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
   };
 
   const overallStatus = getOverallStatus();
-  const statusColor =
-    overallStatus === 'pass'
-      ? 'text-green-500'
-      : overallStatus === 'warning'
-      ? 'text-yellow-500'
-      : overallStatus === 'fail'
-      ? 'text-red-500'
-      : 'text-gray-500';
+  
+  // Get status colors using inline styles
+  const getStatusColors = (status: string) => {
+    switch (status) {
+      case 'pass':
+        return COLORS.green;
+      case 'warning':
+        return COLORS.yellow;
+      case 'fail':
+        return COLORS.red;
+      default:
+        return COLORS.gray;
+    }
+  };
 
-  const statusBgColor =
-    overallStatus === 'pass'
-      ? 'bg-green-500/10 border-green-500/30'
-      : overallStatus === 'warning'
-      ? 'bg-yellow-500/10 border-yellow-500/30'
-      : overallStatus === 'fail'
-      ? 'bg-red-500/10 border-red-500/30'
-      : 'bg-gray-500/10 border-gray-500/30';
+  const statusColors = getStatusColors(overallStatus);
+
+  // Get metric card styles
+  const getMetricCardStyles = (status: string | undefined) => {
+    if (!status || status === 'unknown') {
+      return {
+        bg: COLORS.gray.bg,
+        border: COLORS.gray.border,
+        text: COLORS.gray.text,
+      };
+    }
+    return getStatusColors(status);
+  };
 
   return (
     <div
-      className="fixed inset-0 bg-black z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.9)' }}
       onClick={onClose}
     >
       <div
-        className="bg-gray-900 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto border-2 border-gray-500 shadow-2xl relative"
+        className="rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative"
+        style={{
+          backgroundColor: '#111827', // gray-900
+          border: '2px solid #6b7280', // gray-500
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-gray-900 border-b-2 border-gray-700 p-6 flex items-center justify-between z-10">
+        <div
+          className="sticky top-0 p-6 flex items-center justify-between z-10"
+          style={{
+            backgroundColor: '#111827', // gray-900
+            borderBottom: '2px solid #374151', // gray-700
+          }}
+        >
           <div>
             <h2 className="text-2xl font-bold text-white mb-1">Metrics Dashboard</h2>
             <p className="text-sm text-gray-400">
@@ -135,37 +176,41 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg bg-gray-800 border-2 border-gray-600 hover:border-gray-500 hover:bg-gray-700 transition-colors group"
+            className="p-2 rounded-lg transition-colors"
+            style={{
+              backgroundColor: '#374151',
+              border: '2px solid #6b7280',
+              color: '#e5e7eb',
+              fontSize: '24px',
+              fontWeight: 'bold',
+              lineHeight: '1',
+              width: '44px',
+              height: '44px',
+            }}
             title="Close (ESC)"
           >
-            <svg
-              className="w-6 h-6 text-gray-400 group-hover:text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            ✕
           </button>
         </div>
 
         <div className="p-6 space-y-6">
           {/* Overall Status Banner */}
-          <div className={`p-4 rounded-lg border-2 ${statusBgColor}`}>
+          <div
+            className="p-4 rounded-lg"
+            style={{
+              backgroundColor: statusColors.bg,
+              border: `2px solid ${statusColors.border}`,
+            }}
+          >
             <div className="flex items-center gap-3">
-              <div className={`text-2xl font-bold ${statusColor}`}>
+              <div className="text-2xl font-bold" style={{ color: statusColors.text }}>
                 {overallStatus === 'pass' && '✓'}
                 {overallStatus === 'warning' && '⚠'}
                 {overallStatus === 'fail' && '✕'}
                 {overallStatus === 'unknown' && '○'}
               </div>
               <div>
-                <div className={`font-bold ${statusColor}`}>
+                <div className="font-bold" style={{ color: statusColors.text }}>
                   {overallStatus === 'pass' && 'All Metrics Passing'}
                   {overallStatus === 'warning' && 'Some Metrics Need Attention'}
                   {overallStatus === 'fail' && 'Critical Issues Detected'}
@@ -180,54 +225,29 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
             </div>
           </div>
 
-          {/* Radar Chart */}
-          <div className="bg-gray-800 rounded-lg border-2 border-gray-700 p-6 relative">
+          {/* Radar Chart Placeholder */}
+          <div
+            className="rounded-lg p-6 relative"
+            style={{
+              backgroundColor: '#1f2937', // gray-800
+              border: '2px solid #374151', // gray-700
+            }}
+          >
             <h3 className="text-lg font-bold text-white mb-4">Radar View</h3>
 
-            {availableCount === 0 ? (
-              <div className="h-96 flex items-center justify-center text-gray-400 bg-gray-900 rounded">
-                <div className="text-center p-8">
-                  <div className="text-4xl mb-2">📊</div>
-                  <div className="text-lg font-medium">No metrics available yet</div>
-                  <div className="text-sm mt-2">Metrics will appear as you progress through the steps</div>
-                </div>
+            <div
+              className="h-96 flex items-center justify-center text-gray-400 rounded"
+              style={{
+                backgroundColor: '#111827', // gray-900
+                border: '2px solid #374151', // gray-700
+              }}
+            >
+              <div className="text-center p-8">
+                <div className="text-4xl mb-2">📊</div>
+                <div className="text-lg font-medium">Radar Chart Temporarily Disabled</div>
+                <div className="text-sm mt-2">View individual metrics in the grid below</div>
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={400}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="#4B5563" />
-                  <PolarAngleAxis
-                    dataKey="metric"
-                    tick={{ fill: '#9CA3AF', fontSize: 14 }}
-                  />
-                  <PolarRadiusAxis
-                    angle={90}
-                    domain={[0, 100]}
-                    tick={{ fill: '#6B7280', fontSize: 12 }}
-                  />
-                  <Radar
-                    name="Current Values"
-                    dataKey="value"
-                    stroke="#3B82F6"
-                    fill="#3B82F6"
-                    fillOpacity={0.3}
-                    strokeWidth={2}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1F2937',
-                      border: '1px solid #374151',
-                      borderRadius: '0.5rem',
-                      color: '#F3F4F6',
-                    }}
-                    formatter={(value: number) => `${value.toFixed(1)}%`}
-                  />
-                  <Legend
-                    wrapperStyle={{ color: '#9CA3AF' }}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-            )}
+            </div>
 
             <div className="mt-4 text-xs text-gray-500 text-center">
               Note: All metrics normalized to 0-100% scale for comparison
@@ -235,7 +255,13 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
           </div>
 
           {/* Metric Details Grid */}
-          <div className="bg-gray-800 rounded-lg border-2 border-gray-700 p-6">
+          <div
+            className="rounded-lg p-6"
+            style={{
+              backgroundColor: '#1f2937', // gray-800
+              border: '2px solid #374151', // gray-700
+            }}
+          >
             <h3 className="text-lg font-bold text-white mb-4">Current Values</h3>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -248,31 +274,22 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
                 { key: 'pci', name: 'PCI - Pattern Consistency Index', metric: metrics.pci },
               ].map(({ key, name, metric }) => {
                 const status = metric?.status || 'unknown';
-                const cardBg =
-                  status === 'pass'
-                    ? 'bg-green-500/20 border-green-500'
-                    : status === 'warning'
-                    ? 'bg-yellow-500/20 border-yellow-500'
-                    : status === 'fail'
-                    ? 'bg-red-500/20 border-red-500'
-                    : 'bg-gray-700/50 border-gray-600';
-
-                const valueColor =
-                  status === 'pass'
-                    ? 'text-green-500'
-                    : status === 'warning'
-                    ? 'text-yellow-500'
-                    : status === 'fail'
-                    ? 'text-red-500'
-                    : 'text-gray-600';
+                const cardStyles = getMetricCardStyles(status);
 
                 return (
                   <div
                     key={key}
-                    className={`p-4 rounded-lg border-2 ${cardBg}`}
+                    className="p-4 rounded-lg"
+                    style={{
+                      backgroundColor: cardStyles.bg,
+                      border: `2px solid ${cardStyles.border}`,
+                    }}
                   >
                     <div className="text-sm text-gray-400 mb-1">{name}</div>
-                    <div className={`text-2xl font-bold ${valueColor}`}>
+                    <div
+                      className="text-2xl font-bold"
+                      style={{ color: cardStyles.text }}
+                    >
                       {metric ? metric.value : '-'}
                     </div>
                     {metric && (
@@ -287,23 +304,38 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
           </div>
 
           {/* Threshold Reference */}
-          <div className="bg-gray-800 rounded-lg border-2 border-gray-700 p-6">
+          <div
+            className="rounded-lg p-6"
+            style={{
+              backgroundColor: '#1f2937', // gray-800
+              border: '2px solid #374151', // gray-700
+            }}
+          >
             <h3 className="text-lg font-bold text-white mb-4">Threshold Reference</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: '#22c55e' }}
+                  ></div>
                   <span className="text-gray-300">Pass</span>
                   <span className="text-gray-500">- Meets or exceeds target</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: '#eab308' }}
+                  ></div>
                   <span className="text-gray-300">Warning</span>
                   <span className="text-gray-500">- Below target, needs attention</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: '#ef4444' }}
+                  ></div>
                   <span className="text-gray-300">Fail</span>
                   <span className="text-gray-500">- Critical issue, must address</span>
                 </div>
@@ -321,12 +353,20 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
           </div>
 
           {/* Note about gradual availability */}
-          <div className="bg-blue-500/10 border-2 border-blue-500/30 rounded-lg p-4">
+          <div
+            className="rounded-lg p-4"
+            style={{
+              backgroundColor: COLORS.blue.bg,
+              border: `2px solid ${COLORS.blue.border}`,
+            }}
+          >
             <div className="flex items-start gap-3">
-              <div className="text-blue-500 text-xl">ℹ️</div>
-              <div className="text-sm text-blue-300">
-                <div className="font-semibold mb-1">Metrics Availability</div>
-                <div className="text-blue-400">
+              <div style={{ color: COLORS.blue.text }} className="text-xl">ℹ️</div>
+              <div className="text-sm">
+                <div className="font-semibold mb-1" style={{ color: '#93c5fd' }}>
+                  Metrics Availability
+                </div>
+                <div style={{ color: '#60a5fa' }}>
                   Metrics become available progressively as you complete steps. Some metrics like IAS
                   and SEC are available early (Step 0-1), while others like CI and PCI require
                   completion of later steps (Step 3+). This is normal and ensures metrics reflect

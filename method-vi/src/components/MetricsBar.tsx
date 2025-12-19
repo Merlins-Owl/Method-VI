@@ -108,7 +108,11 @@ export default function MetricsBar({ metrics }: MetricsBarProps) {
       {/* Modal for expanded metric view */}
       {selectedMetric && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(4px)',
+          }}
           onClick={handleCloseModal}
         >
           <div
@@ -119,22 +123,20 @@ export default function MetricsBar({ metrics }: MetricsBarProps) {
               <h2 className="text-xl font-bold text-white">Metric Details</h2>
               <button
                 onClick={handleCloseModal}
-                className="p-2 rounded-lg bg-gray-900 border-2 border-gray-600 hover:border-gray-500 hover:bg-gray-700 transition-colors group"
+                className="p-2 rounded-lg transition-colors"
+                style={{
+                  backgroundColor: '#374151',
+                  border: '2px solid #6b7280',
+                  color: '#e5e7eb',
+                  fontSize: '20px',
+                  fontWeight: 'bold',
+                  lineHeight: '1',
+                  width: '36px',
+                  height: '36px',
+                }}
                 title="Close (ESC)"
               >
-                <svg
-                  className="w-5 h-5 text-gray-400 group-hover:text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                ✕
               </button>
             </div>
             <div className="p-4">
@@ -144,14 +146,13 @@ export default function MetricsBar({ metrics }: MetricsBarProps) {
         </div>
       )}
 
-      {/* DISABLED - causes crash
+      {/* Dashboard Modal - re-enabled with radar chart disabled */}
       {showDashboard && metrics && (
         <MetricsDashboard
           metrics={metrics}
           onClose={() => setShowDashboard(false)}
         />
       )}
-      */}
     </>
   );
 }
