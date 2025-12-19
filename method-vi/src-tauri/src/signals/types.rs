@@ -35,6 +35,12 @@ pub enum SignalType {
 
     /// Metric update (internal, non-blocking)
     MetricUpdate,
+
+    /// Run halted due to critical metric failures
+    Halt,
+
+    /// Metrics warning - requires attention but not a hard stop
+    MetricsWarning,
 }
 
 impl SignalType {
@@ -51,6 +57,8 @@ impl SignalType {
             SignalType::LearningHarvested => "Learning_Harvested",
             SignalType::NewRunReady => "New_Run_Ready",
             SignalType::MetricUpdate => "Metric_Update",
+            SignalType::Halt => "Halt",
+            SignalType::MetricsWarning => "Metrics_Warning",
         }
     }
 }

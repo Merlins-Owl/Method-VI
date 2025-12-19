@@ -2,7 +2,9 @@ use anyhow::{Context as AnyhowContext, Result};
 use chrono::Utc;
 use log::{debug, info, warn};
 
+use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent};
 use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
+use crate::agents::structure_redesign::StructureRedesignAgent;
 use crate::context::{ContextManager, Mode, Role, RunContext, Signal as ContextSignal};
 use crate::ledger::{EntryType, LedgerEntry, LedgerManager, LedgerPayload, LedgerState};
 use crate::signals::{SignalPayload, SignalRouter, SignalType};
@@ -85,8 +87,23 @@ pub struct Orchestrator {
     /// Captured intent summary from Step 0
     pub intent_summary: Option<IntentSummary>,
 
+    /// Step 1 artifacts (immutable baseline)
+    pub intent_anchor: Option<String>,
+    pub charter: Option<String>,
+    pub baseline_report: Option<String>,
+    pub architecture_map: Option<String>,
+
     /// Scope & Pattern Agent (optional - if None, uses stub)
     scope_agent: Option<ScopePatternAgent>,
+
+    /// Governance & Telemetry Agent (optional - if None, metrics are not calculated)
+    governance_agent: Option<GovernanceTelemetryAgent>,
+
+    /// Structure & Redesign Agent (optional - if None, uses stub)
+    structure_agent: Option<StructureRedesignAgent>,
+
+    /// Latest calculated metrics from Governance Agent
+    pub latest_metrics: Option<CriticalMetrics>,
 }
 
 impl Orchestrator {
@@ -95,6 +112,22 @@ impl Orchestrator {
     /// This allows the orchestrator to use the real agent instead of the stub.
     pub fn with_scope_agent(mut self, agent: ScopePatternAgent) -> Self {
         self.scope_agent = Some(agent);
+        self
+    }
+
+    /// Set the Governance & Telemetry Agent for this orchestrator
+    ///
+    /// This enables automatic metrics calculation at step completion.
+    pub fn with_governance_agent(mut self, agent: GovernanceTelemetryAgent) -> Self {
+        self.governance_agent = Some(agent);
+        self
+    }
+
+    /// Set the Structure & Redesign Agent for this orchestrator
+    ///
+    /// This enables architecture map creation and framework design.
+    pub fn with_structure_agent(mut self, agent: StructureRedesignAgent) -> Self {
+        self.structure_agent = Some(agent);
         self
     }
 
@@ -116,7 +149,14 @@ impl Orchestrator {
             ledger: LedgerManager::new(),
             signal_router: SignalRouter::new(),
             intent_summary: None,
-            scope_agent: None, // Will be set via with_scope_agent()
+            intent_anchor: None,
+            charter: None,
+            baseline_report: None,
+            architecture_map: None,
+            scope_agent: None,            // Will be set via with_scope_agent()
+            governance_agent: None,       // Will be set via with_governance_agent()
+            structure_agent: None,        // Will be set via with_structure_agent()
+            latest_metrics: None,
         }
     }
 
@@ -324,9 +364,32 @@ impl Orchestrator {
                 Ok(true)
             }
             RunState::Step1GatePending => {
-                // Future: Handle Step 1 gate approval (baseline frozen)
-                warn!("Step 1 gate approval not yet implemented");
-                Ok(false)
+                // Record gate approval in ledger
+                let payload = LedgerPayload {
+                    action: "gate_approved".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "gate": "Baseline_Frozen",
+                        "approver": approver,
+                    })),
+                    outputs: None,
+                    rationale: Some("Human approved baseline freeze - ready to proceed to Step 2".to_string()),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(1),
+                    Some("Conductor"),
+                    payload,
+                );
+
+                // Transition to Step 2 (future implementation)
+                self.state = RunState::FutureStep(2);
+
+                info!("✓ Baseline gate approved - transitioning to Step 2");
+                info!("Active role: {:?}", self.active_role);
+
+                Ok(true)
             }
             _ => {
                 anyhow::bail!("No gate pending - current state: {:?}", self.state);
@@ -369,6 +432,230 @@ impl Orchestrator {
         info!("Run halted due to gate rejection");
 
         Ok(())
+    }
+
+    /// Execute Step 1: Baseline Establishment
+    ///
+    /// Creates the 4 immutable artifacts that define the run baseline:
+    /// - Intent_Anchor (locked intent)
+    /// - Charter (governing document)
+    /// - Baseline_Report (locked E_baseline)
+    /// - Architecture_Map (process architecture)
+    ///
+    /// # Returns
+    /// A tuple of (intent_anchor_id, charter_id, baseline_id, architecture_id)
+    pub async fn execute_step_1(&mut self) -> Result<(String, String, String, String)> {
+        info!("=== Executing Step 1: Baseline Establishment ===");
+
+        // Validate state
+        if !matches!(self.state, RunState::Step1Active) {
+            anyhow::bail!("Cannot execute Step 1 - current state: {:?}", self.state);
+        }
+
+        // Ensure we have intent summary from Step 0
+        let intent_summary = self.intent_summary.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No intent summary available - Step 0 must be completed first"))?;
+
+        // Validate all agents are configured before proceeding
+        if self.scope_agent.is_none() {
+            anyhow::bail!("Scope & Pattern Agent not configured");
+        }
+        if self.governance_agent.is_none() {
+            anyhow::bail!("Governance & Telemetry Agent not configured");
+        }
+        if self.structure_agent.is_none() {
+            anyhow::bail!("Structure & Redesign Agent not configured");
+        }
+
+        // Step 1a: Create Intent_Anchor (finalize and lock intent)
+        info!("Step 1a: Creating Intent_Anchor...");
+        let intent_summary_content = intent_summary.generate_content_body();
+        let intent_summary_hash = intent_summary.compute_hash();
+
+        let intent_anchor = self.scope_agent.as_ref().unwrap().create_intent_anchor(
+            &self.run_id,
+            &intent_summary_content,
+            &intent_summary_hash,
+        ).await?;
+
+        // Extract Intent_Anchor ID and hash from the artifact
+        let intent_anchor_id = format!("{}-intent-anchor", self.run_id);
+        let intent_anchor_hash = self.extract_hash_from_artifact(&intent_anchor)?;
+        let intent_anchor_content = self.extract_content_from_artifact(&intent_anchor)?;
+
+        info!("✓ Intent_Anchor created: {}", intent_anchor_id);
+
+        // Step 1b: Create Charter (governing document)
+        info!("Step 1b: Creating Charter...");
+        let charter = self.scope_agent.as_ref().unwrap().create_charter(
+            &self.run_id,
+            &intent_anchor_content,
+            &intent_anchor_id,
+            &intent_anchor_hash,
+            "Standard",  // Execution mode
+            "Standard",  // Telemetry profile
+        ).await?;
+
+        let charter_id = format!("{}-charter", self.run_id);
+        let charter_hash = self.extract_hash_from_artifact(&charter)?;
+        let charter_content = self.extract_content_from_artifact(&charter)?;
+
+        info!("✓ Charter created: {}", charter_id);
+
+        // Step 1c: Calculate and lock E_baseline
+        info!("Step 1c: Calculating and locking E_baseline...");
+        let e_baseline = self.calculate_and_lock_e_baseline(&charter_content)?;
+        info!("✓ E_baseline locked: {} words", e_baseline);
+
+        // Step 1d: Create Baseline_Report
+        info!("Step 1d: Creating Baseline_Report...");
+        let baseline_report = self.governance_agent.as_ref().unwrap().create_baseline_report(
+            &self.run_id,
+            &charter_content,
+            &charter_id,
+            &charter_hash,
+            &intent_anchor_id,
+            e_baseline,
+            "Standard",  // Telemetry profile
+        )?;
+
+        let baseline_id = format!("{}-baseline-report", self.run_id);
+        info!("✓ Baseline_Report created: {}", baseline_id);
+
+        // Step 1e: Create Architecture_Map
+        info!("Step 1e: Creating Architecture_Map...");
+        let architecture_map = self.structure_agent.as_ref().unwrap().create_architecture_map(
+            &self.run_id,
+            &charter_content,
+            &charter_hash,
+            &intent_anchor_id,
+            "Standard",  // Mode profile
+        ).await?;
+
+        let architecture_id = format!("{}-architecture-map", self.run_id);
+        info!("✓ Architecture_Map created: {}", architecture_id);
+
+        // Store all 4 artifacts
+        self.intent_anchor = Some(intent_anchor);
+        self.charter = Some(charter);
+        self.baseline_report = Some(baseline_report);
+        self.architecture_map = Some(architecture_map);
+
+        info!("All 4 immutable artifacts stored");
+
+        // Record Step 1 completion in ledger
+        let payload = LedgerPayload {
+            action: "step_1_complete".to_string(),
+            inputs: Some(serde_json::json!({
+                "intent_anchor_id": intent_anchor_id,
+            })),
+            outputs: Some(serde_json::json!({
+                "intent_anchor_id": intent_anchor_id,
+                "charter_id": charter_id,
+                "baseline_id": baseline_id,
+                "architecture_id": architecture_id,
+                "e_baseline": e_baseline,
+            })),
+            rationale: Some("4 immutable baseline artifacts created and locked".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(1),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Emit Baseline_Frozen signal (GATE signal)
+        info!("Emitting Baseline_Frozen signal (GATE)");
+
+        let signal_payload = SignalPayload {
+            step_from: 1,
+            step_to: 2,
+            artifacts_produced: vec![
+                intent_anchor_id.clone(),
+                charter_id.clone(),
+                baseline_id.clone(),
+                architecture_id.clone(),
+            ],
+            metrics_snapshot: None,
+            gate_required: true,
+        };
+
+        let signal = self.signal_router.emit_signal(
+            SignalType::BaselineFrozen,
+            &self.run_id,
+            signal_payload,
+        );
+
+        debug!("Signal emitted: {:?}", signal.hash);
+
+        // Record gate signal in ledger
+        let payload = LedgerPayload {
+            action: "gate_signal_emitted".to_string(),
+            inputs: Some(serde_json::json!({
+                "signal_type": "Baseline_Frozen",
+                "gate_required": true,
+            })),
+            outputs: Some(serde_json::json!({
+                "signal_hash": signal.hash,
+            })),
+            rationale: Some("Step 1 complete, baseline frozen, awaiting human approval to proceed".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Gate,
+            Some(1),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Transition to gate pending state
+        self.state = RunState::Step1GatePending;
+
+        info!("Step 1 complete - awaiting baseline approval");
+        info!("State: {:?}", self.state);
+
+        Ok((intent_anchor_id, charter_id, baseline_id, architecture_id))
+    }
+
+    /// Extract hash from artifact YAML frontmatter
+    fn extract_hash_from_artifact(&self, artifact: &str) -> Result<String> {
+        for line in artifact.lines() {
+            if line.starts_with("hash:") {
+                let hash = line.trim_start_matches("hash:").trim().trim_matches('"');
+                return Ok(hash.to_string());
+            }
+        }
+        anyhow::bail!("No hash found in artifact frontmatter")
+    }
+
+    /// Extract content body from artifact (everything after second ---)
+    fn extract_content_from_artifact(&self, artifact: &str) -> Result<String> {
+        let mut in_frontmatter = false;
+        let mut frontmatter_ended = false;
+        let mut content_lines = Vec::new();
+
+        for line in artifact.lines() {
+            if line.trim() == "---" {
+                if !in_frontmatter {
+                    in_frontmatter = true;
+                } else if in_frontmatter && !frontmatter_ended {
+                    frontmatter_ended = true;
+                    continue;
+                }
+            } else if frontmatter_ended {
+                content_lines.push(line);
+            }
+        }
+
+        if content_lines.is_empty() {
+            anyhow::bail!("No content found after frontmatter in artifact");
+        }
+
+        Ok(content_lines.join("\n"))
     }
 
     /// Validate an action is allowed in the current state
@@ -470,6 +757,100 @@ impl Orchestrator {
         summary.hash = summary.compute_hash();
 
         Ok(summary)
+    }
+
+    /// Calculate metrics for the current step
+    ///
+    /// This is called at step completion to assess performance against thresholds.
+    /// If governance agent is not set, this is a no-op.
+    ///
+    /// # Arguments
+    /// * `content` - The content to analyze (step output)
+    /// * `charter_objectives` - Charter objectives for alignment checking
+    ///
+    /// # Returns
+    /// The calculated metrics, or None if governance agent is not available
+    pub async fn calculate_metrics(
+        &mut self,
+        content: &str,
+        charter_objectives: &str,
+    ) -> Result<Option<CriticalMetrics>> {
+        if let Some(ref agent) = self.governance_agent {
+            info!("Calculating metrics for step {}", self.state.step_number());
+
+            let metrics = agent
+                .calculate_metrics(content, charter_objectives, self.state.step_number())
+                .await?;
+
+            // Check for HALT conditions
+            if let Some(halt_reason) = agent.check_halt_conditions(&metrics) {
+                warn!("HALT condition detected: {}", halt_reason);
+                self.state = RunState::Halted {
+                    reason: halt_reason.clone(),
+                };
+
+                // Emit HALT signal
+                self.signal_router.emit_signal(
+                    SignalType::Halt,
+                    &self.run_id,
+                    SignalPayload {
+                        step_from: self.state.step_number() as i32,
+                        step_to: self.state.step_number() as i32,
+                        artifacts_produced: vec![],
+                        metrics_snapshot: Some(serde_json::to_value(&metrics)?),
+                        gate_required: false,
+                    },
+                );
+            }
+            // Check for PAUSE (warning) conditions
+            else if let Some(pause_reason) = agent.check_pause_conditions(&metrics) {
+                warn!("PAUSE condition detected: {}", pause_reason);
+
+                // Emit warning signal (not a hard stop)
+                self.signal_router.emit_signal(
+                    SignalType::MetricsWarning,
+                    &self.run_id,
+                    SignalPayload {
+                        step_from: self.state.step_number() as i32,
+                        step_to: self.state.step_number() as i32,
+                        artifacts_produced: vec![],
+                        metrics_snapshot: Some(serde_json::to_value(&metrics)?),
+                        gate_required: false,
+                    },
+                );
+            }
+
+            // Store latest metrics
+            self.latest_metrics = Some(metrics.clone());
+
+            Ok(Some(metrics))
+        } else {
+            debug!("Governance agent not available - skipping metrics calculation");
+            Ok(None)
+        }
+    }
+
+    /// Calculate and lock E_baseline (Step 1)
+    ///
+    /// This should be called after the Baseline Report is generated.
+    pub fn calculate_and_lock_e_baseline(&mut self, baseline_content: &str) -> Result<f64> {
+        if let Some(ref mut agent) = self.governance_agent {
+            let baseline = agent.calculate_e_baseline(baseline_content, 1)?;
+            agent.lock_e_baseline(1)?;
+            info!("E_baseline calculated and locked: {}", baseline);
+            Ok(baseline)
+        } else {
+            Err(anyhow::anyhow!(
+                "Governance agent not available - cannot calculate E_baseline"
+            ))
+        }
+    }
+
+    /// Get the current E_baseline value
+    pub fn get_e_baseline(&self) -> Option<f64> {
+        self.governance_agent
+            .as_ref()
+            .and_then(|agent| agent.get_e_baseline())
     }
 }
 

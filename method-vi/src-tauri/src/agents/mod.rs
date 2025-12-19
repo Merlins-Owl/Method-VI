@@ -1,5 +1,12 @@
+pub mod governance_telemetry;
 pub mod orchestrator;
 pub mod scope_pattern;
+pub mod structure_redesign;
 
+pub use governance_telemetry::{
+    CriticalMetrics, EBaseline, GovernanceTelemetryAgent, MetricInput, MetricInputValue,
+    MetricResult, MetricStatus, MetricThreshold,
+};
 pub use orchestrator::Orchestrator;
 pub use scope_pattern::{IntentSummary, ScopePatternAgent};
+pub use structure_redesign::StructureRedesignAgent;

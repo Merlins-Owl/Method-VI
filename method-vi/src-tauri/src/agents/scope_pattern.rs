@@ -396,6 +396,183 @@ Respond in the EXACT format above, preserving the section headers."#,
 
         Ok(artifact)
     }
+
+    /// Create Intent_Anchor artifact (Step 1)
+    ///
+    /// Finalizes and locks the intent from the Intent_Summary.
+    /// This becomes the immutable root of the Coherence Spine.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `intent_summary_content` - Content from the Intent_Summary artifact
+    /// * `intent_summary_hash` - Hash of the Intent_Summary artifact
+    pub async fn create_intent_anchor(
+        &self,
+        run_id: &str,
+        intent_summary_content: &str,
+        intent_summary_hash: &str,
+    ) -> Result<String> {
+        info!("Creating Intent_Anchor for run {}", run_id);
+
+        let system_prompt = "You are finalizing the Intent Anchor for Method-VI. \
+            This is an IMMUTABLE artifact that locks the project intent and scope. \
+            Review the Intent Summary and create the final, locked version with all \
+            clarifications resolved and scope boundaries confirmed.";
+
+        let user_message = format!(
+            "INTENT ANCHOR FINALIZATION\n\n\
+            Intent Summary:\n{}\n\n\
+            Create the final Intent_Anchor document including:\n\
+            1. Canonical Intent Statement (single, clear, unambiguous)\n\
+            2. Locked Parameters (primary goal, audience, success criteria, intent category)\n\
+            3. Scope Boundaries (confirmed in scope, out of scope, resolved edge cases)\n\
+            4. Pattern Selection (if any pattern was applied)\n\
+            5. Anchor Metadata (questions resolved, confidence score, human approval)\n\n\
+            Use the Method-VI Intent_Anchor template format. \
+            Return ONLY the content body (without YAML frontmatter).",
+            intent_summary_content
+        );
+
+        let anchor_content = self.claude_client
+            .call_claude(&system_prompt, &user_message, None, Some(4096))
+            .await
+            .context("Failed to generate Intent_Anchor content")?;
+
+        // Build complete artifact with frontmatter
+        let artifact_id = format!("{}-intent-anchor", run_id);
+        let created_at = Utc::now().to_rfc3339();
+        let content_hash = self.compute_content_hash(&anchor_content);
+
+        let artifact = format!(
+            "---\n\
+            artifact_id: \"{}\"\n\
+            artifact_type: \"Intent_Anchor\"\n\
+            run_id: \"{}\"\n\
+            step_origin: 1\n\
+            created_at: \"{}\"\n\
+            hash: \"{}\"\n\
+            parent_hash: \"{}\"\n\
+            dependencies:\n\
+              - artifact_id: \"{}\"\n\
+                relationship: \"derived_from\"\n\
+            intent_anchor_link: \"{}\"\n\
+            is_immutable: true\n\
+            author: \"scope-pattern-agent\"\n\
+            governance_role: \"Observer\"\n\
+            ---\n\n\
+            {}",
+            artifact_id,
+            run_id,
+            created_at,
+            content_hash,
+            intent_summary_hash,
+            intent_summary_hash,
+            artifact_id, // Self-referencing: this IS the anchor
+            anchor_content.trim()
+        );
+
+        info!("Intent_Anchor created successfully: {}", artifact_id);
+        Ok(artifact)
+    }
+
+    /// Create Charter artifact (Step 1)
+    ///
+    /// Creates the governing Charter document from the Intent_Anchor.
+    /// The Charter defines objectives, scope, success criteria, stakeholders,
+    /// deliverables, assumptions, and risks.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `intent_anchor_content` - Content from the Intent_Anchor artifact
+    /// * `intent_anchor_id` - ID of the Intent_Anchor artifact
+    /// * `intent_anchor_hash` - Hash of the Intent_Anchor artifact
+    /// * `execution_mode` - Execution mode (Standard / Component / Surgical)
+    /// * `telemetry_profile` - Telemetry profile (Lite / Standard / Full / Learning)
+    pub async fn create_charter(
+        &self,
+        run_id: &str,
+        intent_anchor_content: &str,
+        intent_anchor_id: &str,
+        intent_anchor_hash: &str,
+        execution_mode: &str,
+        telemetry_profile: &str,
+    ) -> Result<String> {
+        info!("Creating Charter for run {}", run_id);
+
+        let system_prompt = "You are creating the Charter document for Method-VI. \
+            The Charter is an IMMUTABLE governing document that defines objectives, scope, \
+            success criteria, stakeholders, deliverables, assumptions, and risks. \
+            It must be comprehensive and serve as the reference for the entire run.";
+
+        let user_message = format!(
+            "CHARTER CREATION\n\n\
+            Intent Anchor:\n{}\n\n\
+            Execution Mode: {}\n\
+            Telemetry Profile: {}\n\n\
+            Create a complete Charter document including:\n\
+            1. Run Identity (Run ID, Intent Category, Telemetry Profile, Execution Mode)\n\
+            2. Objectives (Primary and Secondary)\n\
+            3. Scope Definition (Inclusions, Exclusions, Constraints)\n\
+            4. Success Criteria (measurable targets including CI ≥ 0.80, EV ≤ ±10%)\n\
+            5. Stakeholders (roles, interests, engagement levels)\n\
+            6. Deliverables (what will be produced)\n\
+            7. Assumptions (what we're assuming is true)\n\
+            8. Risks (potential risks with mitigation strategies)\n\n\
+            Use the Method-VI Charter template format. \
+            Return ONLY the content body (without YAML frontmatter).",
+            intent_anchor_content,
+            execution_mode,
+            telemetry_profile
+        );
+
+        let charter_content = self.claude_client
+            .call_claude(&system_prompt, &user_message, None, Some(4096))
+            .await
+            .context("Failed to generate Charter content")?;
+
+        // Build complete artifact with frontmatter
+        let artifact_id = format!("{}-charter", run_id);
+        let created_at = Utc::now().to_rfc3339();
+        let content_hash = self.compute_content_hash(&charter_content);
+
+        let artifact = format!(
+            "---\n\
+            artifact_id: \"{}\"\n\
+            artifact_type: \"Charter\"\n\
+            run_id: \"{}\"\n\
+            step_origin: 1\n\
+            created_at: \"{}\"\n\
+            hash: \"{}\"\n\
+            parent_hash: \"{}\"\n\
+            dependencies:\n\
+              - artifact_id: \"{}\"\n\
+                relationship: \"derived_from\"\n\
+            intent_anchor_link: \"{}\"\n\
+            is_immutable: true\n\
+            author: \"scope-pattern-agent\"\n\
+            governance_role: \"Observer\"\n\
+            ---\n\n\
+            {}",
+            artifact_id,
+            run_id,
+            created_at,
+            content_hash,
+            intent_anchor_hash,
+            intent_anchor_hash,
+            intent_anchor_id,
+            charter_content.trim()
+        );
+
+        info!("Charter created successfully: {}", artifact_id);
+        Ok(artifact)
+    }
+
+    /// Compute SHA-256 hash of content
+    fn compute_content_hash(&self, content: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
 }
 
 /// Extract a single-line field value from the response
