@@ -1,4 +1,13 @@
 import { MetricsState, METRIC_METADATA } from '../../types/metrics';
+import {
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+  Tooltip,
+} from 'recharts';
 
 interface MetricsDashboardProps {
   metrics: MetricsState;
@@ -95,7 +104,11 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
       fullMark: 100,
       available: !!metrics.pci,
     },
-  ];
+  ].map(item => ({
+    ...item,
+    // Ensure value is always a valid number
+    value: Number.isFinite(item.value) ? item.value : 0,
+  }));
 
   // Count available metrics
   const availableCount = radarData.filter((d) => d.available).length;
@@ -225,7 +238,7 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
             </div>
           </div>
 
-          {/* Radar Chart Placeholder */}
+          {/* Radar Chart */}
           <div
             className="rounded-lg p-6 relative"
             style={{
@@ -235,18 +248,70 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
           >
             <h3 className="text-lg font-bold text-white mb-4">Radar View</h3>
 
+            {/* Fixed-size container to prevent layout issues */}
             <div
-              className="h-96 flex items-center justify-center text-gray-400 rounded"
               style={{
-                backgroundColor: '#111827', // gray-900
-                border: '2px solid #374151', // gray-700
+                width: '100%',
+                height: '384px', // h-96 equivalent
+                backgroundColor: '#111827',
+                border: '2px solid #374151',
+                borderRadius: '0.5rem',
+                position: 'relative',
+                overflow: 'hidden',
               }}
             >
-              <div className="text-center p-8">
-                <div className="text-4xl mb-2">📊</div>
-                <div className="text-lg font-medium">Radar Chart Temporarily Disabled</div>
-                <div className="text-sm mt-2">View individual metrics in the grid below</div>
-              </div>
+              {availableCount >= 2 ? (
+                <ResponsiveContainer width="100%" height={380}>
+                  <RadarChart
+                    cx="50%"
+                    cy="50%"
+                    outerRadius="70%"
+                    data={radarData}
+                    margin={{ top: 20, right: 30, bottom: 20, left: 30 }}
+                  >
+                    <PolarGrid stroke="#374151" />
+                    <PolarAngleAxis
+                      dataKey="metric"
+                      tick={{ fill: '#9ca3af', fontSize: 12 }}
+                    />
+                    <PolarRadiusAxis
+                      angle={90}
+                      domain={[0, 100]}
+                      tick={{ fill: '#6b7280', fontSize: 10 }}
+                      tickCount={5}
+                    />
+                    <Radar
+                      name="Current"
+                      dataKey="value"
+                      stroke="#22c55e"
+                      fill="#22c55e"
+                      fillOpacity={0.3}
+                      strokeWidth={2}
+                      isAnimationActive={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1f2937',
+                        border: '1px solid #374151',
+                        borderRadius: '0.5rem',
+                        color: '#e5e7eb',
+                      }}
+                      formatter={(value: number) => [
+                        `${typeof value === 'number' ? value.toFixed(1) : 0}%`,
+                        'Value',
+                      ]}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-400">
+                  <div className="text-center p-8">
+                    <div className="text-4xl mb-2">📊</div>
+                    <div className="text-lg font-medium">No Metrics Available Yet</div>
+                    <div className="text-sm mt-2">Complete steps to see the radar chart</div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 text-xs text-gray-500 text-center">
