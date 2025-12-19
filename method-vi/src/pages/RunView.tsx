@@ -33,7 +33,7 @@ export default function RunView() {
   }, [currentStep]);
 
   const handleGateReached = async (summary: IntentSummary) => {
-    console.log('Gate reached with summary:', summary);
+    console.log('[RunView] Gate reached with summary:', summary);
 
     // Show a confirmation dialog (or use the built-in approval flow)
     const confirmed = window.confirm(
@@ -42,19 +42,24 @@ export default function RunView() {
 
     if (confirmed) {
       try {
+        console.log('[RunView] Calling approve_gate backend command...');
+        console.log('[RunView] Current runId:', runId);
+
         // Call Tauri backend to approve gate
         await invoke('approve_gate', {
           approver: 'User', // In a real app, get this from user profile/settings
         });
 
-        console.log('Gate approved, moving to Step 1');
+        console.log('[RunView] Gate approved successfully');
+        console.log('[RunView] Transitioning to Step 1...');
         setCurrentStep(1);
+        console.log('[RunView] Current step set to 1');
       } catch (error) {
-        console.error('Failed to approve gate:', error);
+        console.error('[RunView] Failed to approve gate:', error);
         alert(`Failed to approve gate: ${error}`);
       }
     } else {
-      console.log('User chose to adjust intent');
+      console.log('[RunView] User chose to adjust intent');
     }
   };
 

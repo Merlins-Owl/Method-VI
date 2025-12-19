@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 
 interface MetricsDashboardProps {
-  metrics: MetricsState;
+  metrics?: MetricsState;  // Make optional to match MetricsBar
   onClose: () => void;
 }
 
@@ -44,6 +44,22 @@ const COLORS = {
 };
 
 export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardProps) {
+  // Early return if metrics is null/undefined (safety check)
+  if (!metrics) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.9)' }}
+        onClick={onClose}
+      >
+        <div className="text-white text-center p-8">
+          <div className="text-4xl mb-4">⚠️</div>
+          <div className="text-xl">No metrics data available</div>
+        </div>
+      </div>
+    );
+  }
+
   // Prepare data for radar chart
   // Normalize all metrics to 0-100 scale for visualization
   const normalizeValue = (metricName: string, value: number): number => {
@@ -260,7 +276,8 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
                 overflow: 'hidden',
               }}
             >
-              {availableCount >= 2 ? (
+              {/* Only render RadarChart if we have valid metrics data */}
+            {metrics && (metrics.ci || metrics.ev || metrics.ias) && availableCount >= 2 ? (
                 <ResponsiveContainer width="100%" height={380}>
                   <RadarChart
                     cx="50%"

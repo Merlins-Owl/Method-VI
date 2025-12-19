@@ -131,7 +131,12 @@ pub async fn start_step_0(
     let pattern_recommendations = vec![];
 
     // Store orchestrator in state for future gate approval
-    *state.0.lock().unwrap() = Some(orchestrator);
+    {
+        let mut guard = state.0.lock().unwrap();
+        *guard = Some(orchestrator);
+        info!("Orchestrator stored in state successfully");
+        info!("State contains orchestrator: {}", guard.is_some());
+    }
 
     Ok(Step0Response {
         intent_summary: frontend_summary,
@@ -152,15 +157,31 @@ pub async fn approve_gate(
     info!("Approver: {}", approver);
 
     let mut orch_guard = state.0.lock().unwrap();
+    info!("State lock acquired");
+    info!("State contains orchestrator: {}", orch_guard.is_some());
+
     let orchestrator = orch_guard
         .as_mut()
-        .ok_or_else(|| "No active run found".to_string())?;
+        .ok_or_else(|| {
+            let err = "No active run found in approve_gate".to_string();
+            log::error!("{}", err);
+            err
+        })?;
+
+    info!("Orchestrator found, current state: {:?}", orchestrator.state);
 
     orchestrator
         .approve_gate(&approver)
-        .map_err(|e| format!("Failed to approve gate: {}", e))?;
+        .map_err(|e| {
+            let err = format!("Failed to approve gate: {}", e);
+            log::error!("{}", err);
+            err
+        })?;
 
     info!("Gate approved successfully");
+    info!("New orchestrator state: {:?}", orchestrator.state);
+    info!("State still contains orchestrator: {}", orch_guard.is_some());
+
     Ok(())
 }
 

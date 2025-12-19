@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface Step1ViewProps {
@@ -29,8 +29,15 @@ export default function Step1View({ runId, onBaselineFrozen }: Step1ViewProps) {
   const [result, setResult] = useState<Step1Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creationProgress, setCreationProgress] = useState<string[]>([]);
+  const executedRef = useRef(false);
 
   useEffect(() => {
+    // Prevent double execution in React Strict Mode
+    if (executedRef.current) {
+      console.log('[Step1View] Step 1 already executed, skipping duplicate call');
+      return;
+    }
+    executedRef.current = true;
     executeStep1();
   }, []);
 
@@ -40,35 +47,24 @@ export default function Step1View({ runId, onBaselineFrozen }: Step1ViewProps) {
     setCreationProgress([]);
 
     try {
-      console.log('Executing Step 1...');
+      console.log('[Step1View] Starting Step 1 execution for runId:', runId);
+      console.log('[Step1View] Current timestamp:', new Date().toISOString());
 
-      // Simulate progress updates
-      setCreationProgress(['Creating Intent_Anchor...']);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      setCreationProgress(['Initializing baseline establishment...']);
 
-      setCreationProgress(prev => [...prev, 'Creating Charter...']);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      setCreationProgress(prev => [...prev, 'Calculating and locking E_baseline...']);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      setCreationProgress(prev => [...prev, 'Creating Baseline_Report...']);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      setCreationProgress(prev => [...prev, 'Creating Architecture_Map...']);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Call backend to execute Step 1
+      // Call backend to execute Step 1 immediately (no fake delays)
+      console.log('[Step1View] Calling execute_step_1 backend command...');
       const response = await invoke<Step1Result>('execute_step_1', {
         runId,
       });
 
-      console.log('Step 1 result:', response);
+      console.log('[Step1View] Step 1 result received:', response);
       setResult(response);
       setCreationProgress(prev => [...prev, '✓ All artifacts created successfully']);
       setViewState('review');
     } catch (err) {
-      console.error('Error executing Step 1:', err);
+      console.error('[Step1View] Error executing Step 1:', err);
+      console.error('[Step1View] Error details:', JSON.stringify(err));
       setError(`Failed to create baseline: ${err}`);
       setViewState('error');
     }
