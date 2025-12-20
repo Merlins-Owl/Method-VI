@@ -931,6 +931,333 @@ E_baseline = Word count of Charter content
         hasher.update(content.as_bytes());
         format!("{:x}", hasher.finalize())
     }
+
+    /// Perform governance calibration for Step 2
+    ///
+    /// Reviews Charter objectives and configures five control domains:
+    /// - Entropy Control: Set acceptable EV bounds
+    /// - Objective Control: Align metrics to Charter goals
+    /// - Process Control: Confirm step sequencing
+    /// - Reflective Control: Set reflection cadence
+    /// - Termination Control: Define completion criteria
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `charter_content` - Content from the Charter artifact
+    /// * `charter_hash` - Hash of the Charter artifact
+    /// * `intent_anchor_id` - ID of the Intent_Anchor artifact
+    /// * `architecture_map_content` - Content from the Architecture Map
+    /// * `e_baseline` - The locked E_baseline value
+    ///
+    /// # Returns
+    /// Tuple of (Governance_Summary artifact, Domain_Snapshots artifact)
+    pub async fn perform_governance_calibration(
+        &self,
+        run_id: &str,
+        charter_content: &str,
+        charter_hash: &str,
+        intent_anchor_id: &str,
+        architecture_map_content: &str,
+        e_baseline: f64,
+    ) -> Result<(String, String)> {
+        info!("Performing governance calibration for run {}", run_id);
+
+        let system_prompt = "You are the Governance & Telemetry Agent under the CONDUCTOR role. \
+            Your task is to review the Charter and configure active governance controls for this Method-VI run. \
+            Be specific and concrete about thresholds, triggers, and intervention criteria.";
+
+        let user_message = format!(
+            r#"GOVERNANCE CALIBRATION (Step 2)
+
+Charter Content:
+{}
+
+Architecture Map:
+{}
+
+E_baseline (locked): {} words
+
+Your task: Configure the five control domains for active governance orchestration.
+
+For each domain, specify:
+1. Control objective (what we're monitoring)
+2. Threshold settings (when to intervene)
+3. Intervention triggers (what causes an alert)
+4. Calibration rationale (why these settings)
+
+## 1. ENTROPY CONTROL
+Objective: Manage content expansion/contraction relative to E_baseline
+Default bounds: ±10% variance acceptable
+- What EV bounds are appropriate for this run's scope?
+- What are the warning thresholds (yellow) and HALT thresholds (red)?
+- Rationale:
+
+## 2. OBJECTIVE CONTROL
+Objective: Ensure work remains aligned with Charter objectives
+Metrics: IAS (Intent Alignment Score)
+- What IAS threshold indicates good alignment? (default: ≥0.82)
+- When should we warn about drift from objectives?
+- Rationale:
+
+## 3. PROCESS CONTROL
+Objective: Confirm adherence to Method-VI step sequencing
+Metrics: PCI (Process Compliance Index)
+- What PCI threshold indicates proper process adherence? (default: ≥0.90)
+- What process violations should trigger intervention?
+- Rationale:
+
+## 4. REFLECTIVE CONTROL
+Objective: Maintain appropriate reflection cadence per Architecture Map
+Metrics: RCC (Reflection Cadence Compliance)
+- What is the planned reflection schedule based on the Architecture Map?
+- How do we detect deviations from this schedule?
+- Rationale:
+
+## 5. TERMINATION CONTROL
+Objective: Define clear completion criteria
+- What conditions signal readiness to complete this run?
+- What are the minimum acceptable metric values for closure? (CI, EV, IAS, etc.)
+- What are the "good enough" vs "excellent" criteria?
+- Rationale:
+
+Return your calibration settings in a structured format."#,
+            charter_content,
+            architecture_map_content,
+            e_baseline
+        );
+
+        // Call Claude API for governance calibration
+        let calibration_response = self.api_client
+            .call_claude(system_prompt, &user_message, None, Some(3000))
+            .await
+            .context("Failed to generate governance calibration")?;
+
+        info!("Governance calibration response received");
+
+        // Create Governance_Summary artifact
+        let governance_summary = self.create_governance_summary_artifact(
+            run_id,
+            &calibration_response,
+            charter_hash,
+            intent_anchor_id,
+            e_baseline,
+        )?;
+
+        // Create Domain_Snapshots artifact (baseline readings)
+        let domain_snapshots = self.create_domain_snapshots_artifact(
+            run_id,
+            charter_hash,
+            intent_anchor_id,
+            e_baseline,
+        )?;
+
+        info!("Governance calibration complete");
+
+        Ok((governance_summary, domain_snapshots))
+    }
+
+    /// Create Governance_Summary artifact
+    fn create_governance_summary_artifact(
+        &self,
+        run_id: &str,
+        calibration_content: &str,
+        charter_hash: &str,
+        intent_anchor_id: &str,
+        e_baseline: f64,
+    ) -> Result<String> {
+        info!("Creating Governance_Summary artifact");
+
+        let content_body = format!(
+            r#"# Governance Summary
+
+> 📊 **GOVERNANCE CALIBRATION** - Active governance controls configured for this run.
+> These settings guide continuous monitoring and minimal intervention.
+
+## Control Domain Configuration
+
+{}
+
+## E_baseline Reference
+
+| Parameter | Value | Status |
+|-----------|-------|--------|
+| E_baseline | {} words | Locked ✓ |
+| Acceptable EV | ±10% default | Configured ✓ |
+
+## Threshold Canon Application
+
+All thresholds aligned with Method-VI Threshold Canon:
+
+| Metric | Pass | Warning | HALT |
+|--------|------|---------|------|
+| CI | ≥ 0.80 | 0.70 | 0.50 |
+| EV | ≤ ±10% | ±20% | ±30% |
+| IAS | ≥ 0.80 | 0.70 | 0.50 |
+| EFI | ≥ 95% | 90% | 80% |
+| SEC | 100% | - | - |
+| PCI | ≥ 0.90 | 0.85 | 0.70 |
+
+## Active Governance Mode
+
+**Status:** ENABLED
+**Monitoring Frequency:** Per step completion
+**Intervention Strategy:** Minimal intervention (proportional response)
+
+## Governance Role
+
+**Active Role:** Conductor
+**Activation:** Step 2 (Governance Calibration)
+**Deactivation:** End of Step 2 (→ Observer role reactivated)
+
+---
+📊 **Calibration Complete**
+*Governance controls active for duration of run*"#,
+            calibration_content,
+            e_baseline
+        );
+
+        let content_hash = self.compute_content_hash(&content_body);
+        let artifact_id = format!("{}-governance-summary", run_id);
+        let created_at = chrono::Utc::now().to_rfc3339();
+
+        let artifact = format!(
+            "---\n\
+            artifact_id: \"{}\"\n\
+            artifact_type: \"Governance_Summary\"\n\
+            run_id: \"{}\"\n\
+            step_origin: 2\n\
+            created_at: \"{}\"\n\
+            hash: \"{}\"\n\
+            parent_hash: \"{}\"\n\
+            dependencies:\n\
+              - artifact_id: \"{}\"\n\
+                relationship: \"constrained_by\"\n\
+            intent_anchor_link: \"{}\"\n\
+            is_immutable: false\n\
+            author: \"governance-telemetry-agent\"\n\
+            governance_role: \"Conductor\"\n\
+            ---\n\n\
+            {}",
+            artifact_id,
+            run_id,
+            created_at,
+            content_hash,
+            charter_hash,
+            intent_anchor_id,
+            intent_anchor_id,
+            content_body
+        );
+
+        info!("Governance_Summary created: {}", artifact_id);
+        Ok(artifact)
+    }
+
+    /// Create Domain_Snapshots artifact (baseline readings for five domains)
+    fn create_domain_snapshots_artifact(
+        &self,
+        run_id: &str,
+        charter_hash: &str,
+        intent_anchor_id: &str,
+        e_baseline: f64,
+    ) -> Result<String> {
+        info!("Creating Domain_Snapshots artifact");
+
+        let content_body = format!(
+            r#"# Domain Snapshots
+
+> 📸 **BASELINE READINGS** - Initial state of five control domains at Step 2.
+> These snapshots provide reference points for detecting drift and triggering interventions.
+
+## Domain Baseline Readings
+
+### 1. Clarity Domain
+- **Metric:** CI (Coherence Index)
+- **Baseline Reading:** Not yet measured (Step 3+)
+- **Target:** ≥ 0.82
+- **Status:** Monitoring configured ✓
+
+### 2. Entropy Domain
+- **Metric:** EV (Expansion Variance)
+- **Baseline Reading:** 0.0% (at E_baseline = {} words)
+- **Target:** ≤ ±10%
+- **Status:** Monitoring configured ✓
+
+### 3. Alignment Domain
+- **Metric:** IAS (Intent Alignment Score)
+- **Baseline Reading:** Not yet measured (Step 3+)
+- **Target:** ≥ 0.82
+- **Status:** Monitoring configured ✓
+
+### 4. Cadence Domain
+- **Metric:** RCC (Reflection Cadence Compliance)
+- **Baseline Reading:** On schedule (Step 2 complete)
+- **Target:** Per Architecture Map
+- **Status:** Monitoring configured ✓
+
+### 5. Overhead Domain
+- **Metric:** GLR (Governance Latency Ratio)
+- **Baseline Reading:** Not yet measured (Phase 2 metric)
+- **Target:** ≤ 15%
+- **Status:** Deferred to Phase 2
+
+## Snapshot Metadata
+
+| Field | Value |
+|-------|-------|
+| Snapshot Time | {} |
+| Run ID | {} |
+| Step | 2 (Governance Calibration) |
+| E_baseline | {} words |
+
+## Monitoring Status
+
+All five domains are configured for continuous monitoring throughout the run.
+Snapshots will be updated at each step completion.
+
+---
+📸 **Domain Monitoring Active**
+*Baseline snapshots recorded for reference*"#,
+            e_baseline,
+            chrono::Utc::now().to_rfc3339(),
+            run_id,
+            e_baseline
+        );
+
+        let content_hash = self.compute_content_hash(&content_body);
+        let artifact_id = format!("{}-domain-snapshots", run_id);
+        let created_at = chrono::Utc::now().to_rfc3339();
+
+        let artifact = format!(
+            "---\n\
+            artifact_id: \"{}\"\n\
+            artifact_type: \"Domain_Snapshots\"\n\
+            run_id: \"{}\"\n\
+            step_origin: 2\n\
+            created_at: \"{}\"\n\
+            hash: \"{}\"\n\
+            parent_hash: \"{}\"\n\
+            dependencies:\n\
+              - artifact_id: \"{}\"\n\
+                relationship: \"constrained_by\"\n\
+            intent_anchor_link: \"{}\"\n\
+            is_immutable: false\n\
+            author: \"governance-telemetry-agent\"\n\
+            governance_role: \"Conductor\"\n\
+            ---\n\n\
+            {}",
+            artifact_id,
+            run_id,
+            created_at,
+            content_hash,
+            charter_hash,
+            intent_anchor_id,
+            intent_anchor_id,
+            content_body
+        );
+
+        info!("Domain_Snapshots created: {}", artifact_id);
+        Ok(artifact)
+    }
 }
 
 #[cfg(test)]

@@ -6,6 +6,7 @@ import Step0View from '../components/steps/Step0View';
 import Step1View from '../components/steps/Step1View';
 import Step2View from '../components/steps/Step2View';
 import Step3View from '../components/steps/Step3View';
+import Step4View from '../components/steps/Step4View';
 import { MetricsState } from '../types/metrics';
 import { MOCK_SCENARIOS } from '../utils/mockMetrics';
 
@@ -79,6 +80,11 @@ export default function RunView() {
     setCurrentStep(4);
   };
 
+  const handleSynthesisComplete = async () => {
+    console.log('Synthesis lock-in complete, moving to Step 5');
+    setCurrentStep(5);
+  };
+
   // Render step-specific view
   const renderStepView = () => {
     switch (currentStep) {
@@ -111,6 +117,14 @@ export default function RunView() {
           <Step3View
             runId={runId || ''}
             onAnalysisComplete={handleAnalysisComplete}
+          />
+        );
+
+      case 4:
+        return (
+          <Step4View
+            runId={runId || ''}
+            onSynthesisComplete={handleSynthesisComplete}
           />
         );
 

@@ -26,7 +26,26 @@
       "Bash(git init:*)",
       "Bash(git commit:*)",
       "Bash(git config:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(ANTHROPIC_API_KEY=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 cargo test:*)",
+      "Bash(./test-metrics.bat)",
+      "Bash(./test-step-1.bat)",
+      "Bash(ping:*)",
+      "Bash(ls:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(powershell:*)",
+      "Bash(.dev-with-api-key.bat)",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(cmd /c dev-with-api-key.bat)",
+      "Bash(cmd /c \"call dev-with-api-key.bat\")",
+      "Bash(./test-analysis-agent.bat)",
+      "Bash(if [ -n \"$ANTHROPIC_API_KEY\" ])",
+      "Bash(then echo \"✓ API key is set \\(length: $#ANTHROPIC_API_KEY\\)\")",
+      "Bash(else echo \"✗ API key NOT set\")",
+      "Bash(fi)",
+      "Bash(ANTHROPIC_API_KEY=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 npm run tauri:*)"
     ]
   }
 }
