@@ -43,7 +43,13 @@ pub enum RunState {
     /// Waiting for gate approval (synthesis locked)
     Step4GatePending,
 
-    /// Step 5-6: Future steps (not yet implemented)
+    /// Step 5: Structure & Redesign (framework creation)
+    Step5Active,
+
+    /// Waiting for gate approval (framework ready)
+    Step5GatePending,
+
+    /// Step 6: Future steps (not yet implemented)
     FutureStep(u8),
 
     /// Run completed
@@ -62,6 +68,7 @@ impl RunState {
             RunState::Step2Active | RunState::Step2GatePending => 2,
             RunState::Step3Active | RunState::Step3GatePending => 3,
             RunState::Step4Active | RunState::Step4GatePending => 4,
+            RunState::Step5Active | RunState::Step5GatePending => 5,
             RunState::FutureStep(n) => *n,
             RunState::Completed => 7,
             RunState::Halted { .. } => 255, // Special value for halted
@@ -77,6 +84,7 @@ impl RunState {
                 | RunState::Step2GatePending
                 | RunState::Step3GatePending
                 | RunState::Step4GatePending
+                | RunState::Step5GatePending
         )
     }
 }
@@ -135,6 +143,9 @@ pub struct Orchestrator {
     pub north_star_narrative: Option<String>,
     pub glossary: Option<String>,
     pub limitations: Option<String>,
+
+    /// Step 5 artifacts (structure & redesign)
+    pub framework_architecture: Option<String>,
 
     /// Scope & Pattern Agent (optional - if None, uses stub)
     scope_agent: Option<ScopePatternAgent>,
@@ -218,6 +229,7 @@ impl Orchestrator {
             north_star_narrative: None,
             glossary: None,
             limitations: None,
+            framework_architecture: None,
             scope_agent: None,            // Will be set via with_scope_agent()
             governance_agent: None,       // Will be set via with_governance_agent()
             structure_agent: None,        // Will be set via with_structure_agent()
@@ -252,6 +264,8 @@ impl Orchestrator {
             RunState::Step3GatePending => ContextSignal::AwaitingGate,
             RunState::Step4Active => ContextSignal::Active,
             RunState::Step4GatePending => ContextSignal::AwaitingGate,
+            RunState::Step5Active => ContextSignal::Active,
+            RunState::Step5GatePending => ContextSignal::AwaitingGate,
             RunState::Completed => ContextSignal::Completed,
             RunState::Halted { .. } => ContextSignal::Halted,
             _ => ContextSignal::Active,
@@ -540,10 +554,38 @@ impl Orchestrator {
                     payload,
                 );
 
-                // Transition to Step 5 (future implementation)
-                self.state = RunState::FutureStep(5);
+                // Transition to Step 5
+                self.state = RunState::Step5Active;
 
                 info!("✓ Synthesis gate approved - transitioning to Step 5");
+                info!("Active role: {:?}", self.active_role);
+
+                Ok(true)
+            }
+            RunState::Step5GatePending => {
+                // Record gate approval in ledger
+                let payload = LedgerPayload {
+                    action: "gate_approved".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "gate": "Framework_Ready",
+                        "approver": approver,
+                    })),
+                    outputs: None,
+                    rationale: Some("Human approved framework architecture - ready to proceed to Step 6".to_string()),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(5),
+                    Some("Observer"),
+                    payload,
+                );
+
+                // Transition to Step 6 (future implementation)
+                self.state = RunState::FutureStep(6);
+
+                info!("✓ Framework gate approved - transitioning to Step 6");
                 info!("Active role: {:?}", self.active_role);
 
                 Ok(true)
@@ -1485,6 +1527,149 @@ impl Orchestrator {
         info!("State: {:?}", self.state);
 
         Ok((core_thesis_id, north_star_narrative_id))
+    }
+
+    /// Execute Step 5: Structure & Redesign
+    ///
+    /// Designs the framework architecture by:
+    /// - Reusing Structure & Redesign Agent (attached in Step 1)
+    /// - Using Core Thesis from Step 4 (immutable)
+    /// - Creating framework architecture with section map, transitions, and outline
+    /// - Emitting Framework_Ready signal
+    ///
+    /// # Returns
+    /// The framework_architecture_id
+    pub async fn execute_step_5(&mut self) -> Result<String> {
+        info!("=== Executing Step 5: Structure & Redesign ===");
+
+        // Validate state
+        if !matches!(self.state, RunState::Step5Active) {
+            anyhow::bail!("Cannot execute Step 5 - current state: {:?}", self.state);
+        }
+
+        // Ensure we have required artifacts from Step 4
+        let core_thesis = self.core_thesis.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Core Thesis available - Step 4 must be completed first"))?;
+
+        // Validate structure_agent is configured
+        if self.structure_agent.is_none() {
+            anyhow::bail!("Structure & Redesign Agent not configured");
+        }
+
+        info!("Step 5: Creating framework architecture...");
+
+        // Construct synthesis from Step 4 artifacts
+        let synthesis = format!(
+            "SYNTHESIS ARTIFACTS FROM STEP 4:\n\n\
+            CORE THESIS:\n{}\n\n\
+            OPERATING PRINCIPLES:\n{}\n\n\
+            MODEL GEOMETRY:\n{}\n\n\
+            CAUSAL SPINE:\n{}\n\n\
+            NORTH STAR NARRATIVE:\n{}\n\n\
+            GLOSSARY:\n{}\n\n\
+            LIMITATIONS:\n{}",
+            core_thesis,
+            self.operating_principles.as_ref().unwrap_or(&"None".to_string()),
+            self.model_geometry.as_ref().unwrap_or(&"None".to_string()),
+            self.causal_spine.as_ref().unwrap_or(&"None".to_string()),
+            self.north_star_narrative.as_ref().unwrap_or(&"None".to_string()),
+            self.glossary.as_ref().unwrap_or(&"None".to_string()),
+            self.limitations.as_ref().unwrap_or(&"None".to_string())
+        );
+
+        // Call Structure & Redesign Agent (reuse from Step 1)
+        let agent = self.structure_agent.as_mut().unwrap();
+        let framework_architecture = agent
+            .create_framework_architecture(&self.run_id, core_thesis, &synthesis)
+            .await?;
+
+        let framework_architecture_id = format!("{}-framework-architecture", self.run_id);
+
+        info!("✓ Framework_Architecture created: {}", framework_architecture_id);
+
+        // Store artifact
+        self.framework_architecture = Some(framework_architecture.clone());
+
+        info!("Framework architecture stored");
+
+        // Calculate metrics
+        info!("Step 5: Calculating metrics...");
+        let charter = self.charter.as_ref().unwrap();
+        let charter_content = self.extract_content_from_artifact(charter)?;
+
+        // Use the framework architecture as the output for metrics
+        let metrics = self.calculate_metrics(&charter_content, &framework_architecture).await?;
+
+        // Record Step 5 completion in ledger
+        let payload = LedgerPayload {
+            action: "step_5_complete".to_string(),
+            inputs: Some(serde_json::json!({
+                "core_thesis_id": format!("{}-core-thesis", self.run_id),
+                "synthesis_artifacts": "7 artifacts from Step 4",
+            })),
+            outputs: Some(serde_json::json!({
+                "framework_architecture_id": framework_architecture_id,
+            })),
+            rationale: Some("Framework architecture complete, ready for implementation".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(5),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Emit Ready_for_Validation signal (GATE signal)
+        info!("Emitting Ready_for_Validation signal (GATE)");
+
+        let signal_payload = SignalPayload {
+            step_from: 5,
+            step_to: 6,
+            artifacts_produced: vec![
+                framework_architecture_id.clone(),
+            ],
+            metrics_snapshot: metrics.as_ref().map(|m| serde_json::to_value(m).unwrap()),
+            gate_required: true,
+        };
+
+        let signal = self.signal_router.emit_signal(
+            SignalType::ReadyForValidation,
+            &self.run_id,
+            signal_payload,
+        );
+
+        debug!("Signal emitted: {:?}", signal.hash);
+
+        // Record gate signal in ledger
+        let payload = LedgerPayload {
+            action: "gate_signal_emitted".to_string(),
+            inputs: Some(serde_json::json!({
+                "signal_type": "Ready_for_Validation",
+                "gate_required": true,
+            })),
+            outputs: Some(serde_json::json!({
+                "signal_hash": signal.hash,
+            })),
+            rationale: Some("Step 5 complete, framework ready, awaiting human approval to proceed to validation".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Gate,
+            Some(5),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Transition to gate pending state
+        self.state = RunState::Step5GatePending;
+
+        info!("Step 5 complete - awaiting framework approval");
+        info!("State: {:?}", self.state);
+
+        Ok(framework_architecture_id)
     }
 }
 

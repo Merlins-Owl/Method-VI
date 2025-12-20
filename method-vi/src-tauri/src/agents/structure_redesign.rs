@@ -148,25 +148,79 @@ impl StructureRedesignAgent {
     ) -> Result<String> {
         debug!("Creating Framework Architecture for run {}", run_id);
 
-        let system_prompt = "You are a framework architecture specialist for Method-VI. \
-            Design a structured framework architecture that organizes the content into logical \
-            sections with clear purposes, dependencies, and transition logic.";
+        let system_prompt = "You are the Structure & Redesign Agent for Method-VI, operating under the AUDITOR governance role.\n\n\
+            Your task is to design a comprehensive framework architecture that transforms the synthesis artifacts \
+            from Step 4 into a structured, coherent document framework.\n\n\
+            Key responsibilities:\n\
+            1. Create logical section boundaries with clear purposes and dependencies\n\
+            2. Define transition logic that ensures smooth flow between sections\n\
+            3. Maintain governance coherence (PCI, CI, EV, SEC, GLR)\n\
+            4. Normalize headers and ensure term consistency with the Glossary\n\
+            5. Design architecture that serves the Core Thesis (IMMUTABLE)\n\n\
+            The framework you design must:\n\
+            - Organize content into a clear, logical structure\n\
+            - Make dependencies explicit\n\
+            - Support the Model Geometry identified in synthesis\n\
+            - Honor the Causal Spine's logic flow\n\
+            - Use terms consistently per the Glossary\n\
+            - Align with the North Star Narrative direction";
 
         let user_message = format!(
-            "FRAMEWORK ARCHITECTURE\n\n\
-            Input - Core Thesis:\n{}\n\n\
-            Input - Synthesis:\n{}\n\n\
-            Design a framework structure including:\n\
-            1. Section definitions with purpose, content, and dependencies\n\
-            2. Transition logic explaining how sections connect\n\
-            3. Architecture outline showing the overall structure\n\n\
-            Create a clear, logical organization that serves the core thesis.",
+            "STEP 5: FRAMEWORK ARCHITECTURE DESIGN\n\
+            GOVERNANCE ROLE: Auditor\n\
+            EXECUTION MODE: Standard\n\n\
+            You are designing the framework architecture for run: {}\n\n\
+            === IMMUTABLE CORE THESIS ===\n\
+            (This is locked from Step 4 - DO NOT modify or reinterpret)\n\n\
+            {}\n\n\
+            === SYNTHESIS ARTIFACTS FROM STEP 4 ===\n\n\
+            {}\n\n\
+            === YOUR TASK ===\n\n\
+            Design a Framework Architecture following this structure:\n\n\
+            1. FRAMEWORK OVERVIEW\n\
+               - Framework Type (description)\n\
+               - Model Geometry (from synthesis)\n\
+               - Section Count\n\
+               - Execution Mode (Standard)\n\n\
+            2. SECTION FUNCTION MAP\n\
+               Create a table with columns:\n\
+               - Section # (numbered sequentially)\n\
+               - Section Name (clear, descriptive)\n\
+               - Purpose (what this section accomplishes)\n\
+               - Dependencies (which sections it depends on, or \"None\")\n\n\
+            3. FRAMEWORK CONTENT\n\
+               For each section, provide:\n\
+               - Section Name (as header)\n\
+               - Purpose (what this section accomplishes)\n\
+               - Content Outline (key points/structure, not full text)\n\
+               - Transition to Next (how this section connects to the next)\n\n\
+            4. TRANSITION LOGIC MAP\n\
+               - Explain how sections connect and flow\n\
+               - Justify the sequence\n\
+               - Show any branching or cyclic patterns (if Model Geometry requires)\n\n\
+            5. GOVERNANCE AUDIT\n\
+               - Purpose Coherence Index (PCI): Are section purposes aligned with Core Thesis?\n\
+               - Content Identity (CI): Does structure preserve synthesis meaning?\n\
+               - Structural Coherence (SEC): Are dependencies logical and minimal?\n\
+               - Glossary Respect (GLR): Are terms used consistently?\n\n\
+            6. ARCHITECTURE OUTLINE\n\
+               Provide a visual representation of the framework structure.\n\n\
+            Your framework architecture must:\n\
+            - Serve the Core Thesis (do not modify or reinterpret it)\n\
+            - Follow the Causal Spine logic\n\
+            - Use Glossary terms consistently\n\
+            - Support the identified Model Geometry\n\
+            - Create clear, logical section boundaries\n\
+            - Minimize coupling (low dependencies)\n\
+            - Maximize coherence (sections support each other)\n\n\
+            Output your framework architecture design now.",
+            run_id,
             core_thesis,
             synthesis
         );
 
         let architecture = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(4096))
+            .call_claude(system_prompt, &user_message, None, Some(8192))
             .await
             .context("Failed to generate framework architecture")?;
 

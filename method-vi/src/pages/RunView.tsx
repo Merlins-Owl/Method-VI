@@ -7,6 +7,7 @@ import Step1View from '../components/steps/Step1View';
 import Step2View from '../components/steps/Step2View';
 import Step3View from '../components/steps/Step3View';
 import Step4View from '../components/steps/Step4View';
+import Step5View from '../components/steps/Step5View';
 import { MetricsState } from '../types/metrics';
 import { MOCK_SCENARIOS } from '../utils/mockMetrics';
 
@@ -85,6 +86,11 @@ export default function RunView() {
     setCurrentStep(5);
   };
 
+  const handleFrameworkComplete = async () => {
+    console.log('Framework architecture complete, moving to Step 6');
+    setCurrentStep(6);
+  };
+
   // Render step-specific view
   const renderStepView = () => {
     switch (currentStep) {
@@ -125,6 +131,14 @@ export default function RunView() {
           <Step4View
             runId={runId || ''}
             onSynthesisComplete={handleSynthesisComplete}
+          />
+        );
+
+      case 5:
+        return (
+          <Step5View
+            runId={runId || ''}
+            onFrameworkComplete={handleFrameworkComplete}
           />
         );
 

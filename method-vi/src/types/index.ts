@@ -44,6 +44,8 @@ export type RunState =
   | { type: 'Step3GatePending' }
   | { type: 'Step4Active' }
   | { type: 'Step4GatePending' }
+  | { type: 'Step5Active' }
+  | { type: 'Step5GatePending' }
   | { type: 'FutureStep'; step: number }
   | { type: 'Completed' }
   | { type: 'Halted'; reason: string };
@@ -107,6 +109,20 @@ export interface Step4Response {
 export interface GlossaryEntry {
   term: string;
   definition: string;
+}
+
+// Step 5: Structure & Redesign Types
+export interface Step5Response {
+  framework_architecture_id: string;
+  framework_architecture: string;
+  metrics: {
+    ci: number | null;
+    ev: number | null;
+    ias: number | null;
+    efi: number | null;
+    sec: number | null;
+    pci: number | null;
+  } | null;
 }
 
 export type ModelGeometry = 'Linear' | 'Cyclic' | 'Branching';
