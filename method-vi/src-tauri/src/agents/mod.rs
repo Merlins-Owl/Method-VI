@@ -1,8 +1,13 @@
+pub mod analysis_synthesis;
 pub mod governance_telemetry;
 pub mod orchestrator;
 pub mod scope_pattern;
 pub mod structure_redesign;
 
+pub use analysis_synthesis::{
+    AnalysisSynthesisAgent, GlossaryEntry, LensEfficacyReport, LensResult, ModelGeometry,
+    Step4SynthesisResult,
+};
 pub use governance_telemetry::{
     CriticalMetrics, EBaseline, GovernanceTelemetryAgent, MetricInput, MetricInputValue,
     MetricResult, MetricStatus, MetricThreshold,

@@ -1,12 +1,13 @@
-use anyhow::{Context as AnyhowContext, Result};
+use anyhow::Result;
 use chrono::Utc;
 use log::{debug, info, warn};
 
+use crate::agents::analysis_synthesis::AnalysisSynthesisAgent;
 use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent};
 use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
 use crate::agents::structure_redesign::StructureRedesignAgent;
 use crate::context::{ContextManager, Mode, Role, RunContext, Signal as ContextSignal};
-use crate::ledger::{EntryType, LedgerEntry, LedgerManager, LedgerPayload, LedgerState};
+use crate::ledger::{EntryType, LedgerManager, LedgerPayload, LedgerState};
 use crate::signals::{SignalPayload, SignalRouter, SignalType};
 
 /// Run state for tracking Method-VI session progress
@@ -24,7 +25,25 @@ pub enum RunState {
     /// Waiting for gate approval (baseline frozen)
     Step1GatePending,
 
-    /// Step 2-6: Future steps (not yet implemented)
+    /// Step 2: Governance calibration (active governance)
+    Step2Active,
+
+    /// Waiting for gate approval (governance calibrated)
+    Step2GatePending,
+
+    /// Step 3: Multi-angle analysis (six-lens analysis)
+    Step3Active,
+
+    /// Waiting for gate approval (analysis complete)
+    Step3GatePending,
+
+    /// Step 4: Synthesis lock-in (model building)
+    Step4Active,
+
+    /// Waiting for gate approval (synthesis locked)
+    Step4GatePending,
+
+    /// Step 5-6: Future steps (not yet implemented)
     FutureStep(u8),
 
     /// Run completed
@@ -40,6 +59,9 @@ impl RunState {
         match self {
             RunState::Step0Active | RunState::Step0GatePending => 0,
             RunState::Step1Active | RunState::Step1GatePending => 1,
+            RunState::Step2Active | RunState::Step2GatePending => 2,
+            RunState::Step3Active | RunState::Step3GatePending => 3,
+            RunState::Step4Active | RunState::Step4GatePending => 4,
             RunState::FutureStep(n) => *n,
             RunState::Completed => 7,
             RunState::Halted { .. } => 255, // Special value for halted
@@ -50,7 +72,11 @@ impl RunState {
     pub fn is_gate_pending(&self) -> bool {
         matches!(
             self,
-            RunState::Step0GatePending | RunState::Step1GatePending
+            RunState::Step0GatePending
+                | RunState::Step1GatePending
+                | RunState::Step2GatePending
+                | RunState::Step3GatePending
+                | RunState::Step4GatePending
         )
     }
 }
@@ -93,6 +119,23 @@ pub struct Orchestrator {
     pub baseline_report: Option<String>,
     pub architecture_map: Option<String>,
 
+    /// Step 2 artifacts (governance calibration)
+    pub governance_summary: Option<String>,
+    pub domain_snapshots: Option<String>,
+
+    /// Step 3 artifacts (six-lens analysis)
+    pub integrated_diagnostic: Option<String>,
+    pub lens_efficacy_report: Option<String>,
+
+    /// Step 4 artifacts (synthesis lock-in)
+    pub core_thesis: Option<String>,
+    pub operating_principles: Option<String>,
+    pub model_geometry: Option<String>,
+    pub causal_spine: Option<String>,
+    pub north_star_narrative: Option<String>,
+    pub glossary: Option<String>,
+    pub limitations: Option<String>,
+
     /// Scope & Pattern Agent (optional - if None, uses stub)
     scope_agent: Option<ScopePatternAgent>,
 
@@ -101,6 +144,9 @@ pub struct Orchestrator {
 
     /// Structure & Redesign Agent (optional - if None, uses stub)
     structure_agent: Option<StructureRedesignAgent>,
+
+    /// Analysis & Synthesis Agent (optional - if None, uses stub)
+    analysis_synthesis_agent: Option<AnalysisSynthesisAgent>,
 
     /// Latest calculated metrics from Governance Agent
     pub latest_metrics: Option<CriticalMetrics>,
@@ -131,6 +177,14 @@ impl Orchestrator {
         self
     }
 
+    /// Set the Analysis & Synthesis Agent for this orchestrator
+    ///
+    /// This enables six-lens analysis (Step 3) and synthesis lock-in (Step 4).
+    pub fn with_analysis_synthesis_agent(mut self, agent: AnalysisSynthesisAgent) -> Self {
+        self.analysis_synthesis_agent = Some(agent);
+        self
+    }
+
     /// Create a new Orchestrator for a run
     ///
     /// # Arguments
@@ -153,9 +207,21 @@ impl Orchestrator {
             charter: None,
             baseline_report: None,
             architecture_map: None,
+            governance_summary: None,
+            domain_snapshots: None,
+            integrated_diagnostic: None,
+            lens_efficacy_report: None,
+            core_thesis: None,
+            operating_principles: None,
+            model_geometry: None,
+            causal_spine: None,
+            north_star_narrative: None,
+            glossary: None,
+            limitations: None,
             scope_agent: None,            // Will be set via with_scope_agent()
             governance_agent: None,       // Will be set via with_governance_agent()
             structure_agent: None,        // Will be set via with_structure_agent()
+            analysis_synthesis_agent: None, // Will be set via with_analysis_synthesis_agent()
             latest_metrics: None,
         }
     }
@@ -180,6 +246,12 @@ impl Orchestrator {
             RunState::Step0GatePending => ContextSignal::AwaitingGate,
             RunState::Step1Active => ContextSignal::Active,
             RunState::Step1GatePending => ContextSignal::AwaitingGate,
+            RunState::Step2Active => ContextSignal::Active,
+            RunState::Step2GatePending => ContextSignal::AwaitingGate,
+            RunState::Step3Active => ContextSignal::Active,
+            RunState::Step3GatePending => ContextSignal::AwaitingGate,
+            RunState::Step4Active => ContextSignal::Active,
+            RunState::Step4GatePending => ContextSignal::AwaitingGate,
             RunState::Completed => ContextSignal::Completed,
             RunState::Halted { .. } => ContextSignal::Halted,
             _ => ContextSignal::Active,
@@ -383,10 +455,95 @@ impl Orchestrator {
                     payload,
                 );
 
-                // Transition to Step 2 (future implementation)
-                self.state = RunState::FutureStep(2);
+                // Transition to Step 2
+                self.state = RunState::Step2Active;
 
                 info!("✓ Baseline gate approved - transitioning to Step 2");
+                info!("Active role: {:?}", self.active_role);
+
+                Ok(true)
+            }
+            RunState::Step2GatePending => {
+                // Record gate approval in ledger
+                let payload = LedgerPayload {
+                    action: "gate_approved".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "gate": "Ready_for_Analysis",
+                        "approver": approver,
+                    })),
+                    outputs: None,
+                    rationale: Some("Human approved governance calibration - ready to proceed to Step 3".to_string()),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(2),
+                    Some("Conductor"),
+                    payload,
+                );
+
+                // Transition to Step 3
+                self.state = RunState::Step3Active;
+                self.active_role = Role::Observer; // Role transitions Conductor → Observer
+
+                info!("✓ Governance calibration gate approved - transitioning to Step 3");
+                info!("Active role: {:?}", self.active_role);
+
+                Ok(true)
+            }
+            RunState::Step3GatePending => {
+                // Record gate approval in ledger
+                let payload = LedgerPayload {
+                    action: "gate_approved".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "gate": "Ready_for_Synthesis",
+                        "approver": approver,
+                    })),
+                    outputs: None,
+                    rationale: Some("Human approved multi-angle analysis - ready to proceed to Step 4".to_string()),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(3),
+                    Some("Observer"),
+                    payload,
+                );
+
+                // Transition to Step 4
+                self.state = RunState::Step4Active;
+
+                info!("✓ Analysis gate approved - transitioning to Step 4");
+                info!("Active role: {:?}", self.active_role);
+
+                Ok(true)
+            }
+            RunState::Step4GatePending => {
+                // Record gate approval in ledger
+                let payload = LedgerPayload {
+                    action: "gate_approved".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "gate": "Ready_for_Redesign",
+                        "approver": approver,
+                    })),
+                    outputs: None,
+                    rationale: Some("Human approved synthesis lock-in - ready to proceed to Step 5".to_string()),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(4),
+                    Some("Observer"),
+                    payload,
+                );
+
+                // Transition to Step 5 (future implementation)
+                self.state = RunState::FutureStep(5);
+
+                info!("✓ Synthesis gate approved - transitioning to Step 5");
                 info!("Active role: {:?}", self.active_role);
 
                 Ok(true)
@@ -621,6 +778,183 @@ impl Orchestrator {
         Ok((intent_anchor_id, charter_id, baseline_id, architecture_id))
     }
 
+    /// Execute Step 2: Governance Calibration
+    ///
+    /// Performs active governance calibration by:
+    /// - Reviewing Charter objectives
+    /// - Configuring five control domains (Entropy, Objective, Process, Reflective, Termination)
+    /// - Creating Governance_Summary and Domain_Snapshots artifacts
+    /// - Calculating initial metrics from baseline
+    /// - Emitting Ready_for_Analysis signal
+    ///
+    /// # Returns
+    /// A tuple of (governance_summary_id, domain_snapshots_id)
+    pub async fn execute_step_2(&mut self) -> Result<(String, String)> {
+        info!("=== Executing Step 2: Governance Calibration ===");
+
+        // Validate state
+        if !matches!(self.state, RunState::Step2Active) {
+            anyhow::bail!("Cannot execute Step 2 - current state: {:?}", self.state);
+        }
+
+        // Ensure we have required artifacts from Step 1
+        let charter = self.charter.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Charter available - Step 1 must be completed first"))?;
+
+        let architecture_map = self.architecture_map.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Architecture Map available - Step 1 must be completed first"))?;
+
+        // Validate governance agent is configured
+        if self.governance_agent.is_none() {
+            anyhow::bail!("Governance & Telemetry Agent not configured");
+        }
+
+        // Extract Charter content and hash
+        let charter_content = self.extract_content_from_artifact(charter)?;
+        let charter_hash = self.extract_hash_from_artifact(charter)?;
+
+        // Extract Architecture Map content
+        let architecture_map_content = self.extract_content_from_artifact(architecture_map)?;
+
+        // Get Intent Anchor ID
+        let intent_anchor_id = format!("{}-intent-anchor", self.run_id);
+
+        // Get E_baseline
+        let e_baseline = self.get_e_baseline()
+            .ok_or_else(|| anyhow::anyhow!("E_baseline not available - Step 1 must be completed first"))?;
+
+        info!("Step 2: Configuring governance controls...");
+        info!("  Charter hash: {}", charter_hash);
+        info!("  E_baseline: {} words", e_baseline);
+
+        // Call Governance & Telemetry Agent to perform calibration
+        let (governance_summary, domain_snapshots) = self.governance_agent.as_ref().unwrap()
+            .perform_governance_calibration(
+                &self.run_id,
+                &charter_content,
+                &charter_hash,
+                &intent_anchor_id,
+                &architecture_map_content,
+                e_baseline,
+            )
+            .await?;
+
+        let governance_summary_id = format!("{}-governance-summary", self.run_id);
+        let domain_snapshots_id = format!("{}-domain-snapshots", self.run_id);
+
+        info!("✓ Governance_Summary created: {}", governance_summary_id);
+        info!("✓ Domain_Snapshots created: {}", domain_snapshots_id);
+
+        // Store artifacts
+        self.governance_summary = Some(governance_summary);
+        self.domain_snapshots = Some(domain_snapshots);
+
+        info!("Governance calibration artifacts stored");
+
+        // Calculate initial metrics from baseline
+        info!("Step 2: Calculating initial metrics...");
+        let initial_metrics = self.governance_agent.as_ref().unwrap()
+            .calculate_metrics(&charter_content, &charter_content, 2)
+            .await?;
+
+        // Store metrics
+        self.latest_metrics = Some(initial_metrics.clone());
+
+        info!("✓ Initial metrics calculated:");
+        if let Some(ci) = &initial_metrics.ci {
+            info!("  CI: {:.2} ({})", ci.value, match ci.status {
+                crate::agents::governance_telemetry::MetricStatus::Pass => "PASS",
+                crate::agents::governance_telemetry::MetricStatus::Warning => "WARNING",
+                crate::agents::governance_telemetry::MetricStatus::Fail => "FAIL",
+            });
+        }
+        if let Some(ev) = &initial_metrics.ev {
+            info!("  EV: {:.1}% ({})", ev.value, match ev.status {
+                crate::agents::governance_telemetry::MetricStatus::Pass => "PASS",
+                crate::agents::governance_telemetry::MetricStatus::Warning => "WARNING",
+                crate::agents::governance_telemetry::MetricStatus::Fail => "FAIL",
+            });
+        }
+
+        // Record Step 2 completion in ledger
+        let payload = LedgerPayload {
+            action: "step_2_complete".to_string(),
+            inputs: Some(serde_json::json!({
+                "charter_hash": charter_hash,
+                "e_baseline": e_baseline,
+            })),
+            outputs: Some(serde_json::json!({
+                "governance_summary_id": governance_summary_id,
+                "domain_snapshots_id": domain_snapshots_id,
+                "initial_metrics": {
+                    "ci": initial_metrics.ci.as_ref().map(|m| m.value),
+                    "ev": initial_metrics.ev.as_ref().map(|m| m.value),
+                    "ias": initial_metrics.ias.as_ref().map(|m| m.value),
+                }
+            })),
+            rationale: Some("Governance calibration complete, five control domains configured".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(2),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Emit Ready_for_Analysis signal (GATE signal)
+        info!("Emitting Ready_for_Analysis signal (GATE)");
+
+        let signal_payload = SignalPayload {
+            step_from: 2,
+            step_to: 3,
+            artifacts_produced: vec![
+                governance_summary_id.clone(),
+                domain_snapshots_id.clone(),
+            ],
+            metrics_snapshot: Some(serde_json::to_value(&initial_metrics)?),
+            gate_required: true,
+        };
+
+        let signal = self.signal_router.emit_signal(
+            SignalType::ReadyForAnalysis,
+            &self.run_id,
+            signal_payload,
+        );
+
+        debug!("Signal emitted: {:?}", signal.hash);
+
+        // Record gate signal in ledger
+        let payload = LedgerPayload {
+            action: "gate_signal_emitted".to_string(),
+            inputs: Some(serde_json::json!({
+                "signal_type": "Ready_for_Analysis",
+                "gate_required": true,
+            })),
+            outputs: Some(serde_json::json!({
+                "signal_hash": signal.hash,
+            })),
+            rationale: Some("Step 2 complete, governance calibrated, awaiting human approval to proceed".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Gate,
+            Some(2),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Transition to gate pending state
+        self.state = RunState::Step2GatePending;
+
+        info!("Step 2 complete - awaiting governance calibration approval");
+        info!("State: {:?}", self.state);
+
+        Ok((governance_summary_id, domain_snapshots_id))
+    }
+
     /// Extract hash from artifact YAML frontmatter
     fn extract_hash_from_artifact(&self, artifact: &str) -> Result<String> {
         for line in artifact.lines() {
@@ -685,8 +1019,9 @@ impl Orchestrator {
     pub fn get_ledger_state(&self) -> LedgerState {
         match &self.state {
             RunState::Step0Active => LedgerState::Step0Active,
-            RunState::Step0GatePending | RunState::Step1GatePending => LedgerState::GatePending,
+            RunState::Step0GatePending | RunState::Step1GatePending | RunState::Step2GatePending => LedgerState::GatePending,
             RunState::Step1Active => LedgerState::BaselineFrozen, // After baseline is frozen
+            RunState::Step2Active => LedgerState::Normal,
             RunState::Halted { .. } => LedgerState::HaltActive,
             _ => LedgerState::Normal,
         }
@@ -851,6 +1186,305 @@ impl Orchestrator {
         self.governance_agent
             .as_ref()
             .and_then(|agent| agent.get_e_baseline())
+    }
+
+    /// Execute Step 3: Multi-Angle Analysis
+    ///
+    /// Performs six-lens analysis on the Charter by:
+    /// - Applying six analytical lenses (Structural, Thematic, Logic, Evidence, Expression, Intent)
+    /// - Using weighted lens sequencing based on intent category
+    /// - Tracking lens efficacy for pattern learning
+    /// - Creating Integrated_Diagnostic artifact
+    /// - Emitting Ready_for_Synthesis signal
+    ///
+    /// # Returns
+    /// A tuple of (integrated_diagnostic_id, lens_efficacy_report_id)
+    pub async fn execute_step_3(&mut self) -> Result<(String, String)> {
+        info!("=== Executing Step 3: Multi-Angle Analysis ===");
+
+        // Validate state
+        if !matches!(self.state, RunState::Step3Active) {
+            anyhow::bail!("Cannot execute Step 3 - current state: {:?}", self.state);
+        }
+
+        // Ensure we have required artifacts from Step 1
+        let charter = self.charter.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Charter available - Step 1 must be completed first"))?;
+
+        // Validate analysis_synthesis_agent is configured
+        if self.analysis_synthesis_agent.is_none() {
+            anyhow::bail!("Analysis & Synthesis Agent not configured");
+        }
+
+        // Extract Charter content
+        let charter_content = self.extract_content_from_artifact(charter)?;
+
+        // Get intent category from intent summary (clone to avoid borrow issues)
+        let intent_category = self.intent_summary.as_ref()
+            .map(|intent| intent.intent_category.clone())
+            .unwrap_or_else(|| "Analytical".to_string()); // Default to Analytical if not available
+
+        info!("Step 3: Performing six-lens analysis...");
+        info!("  Intent category: {}", intent_category);
+
+        // Perform six-lens analysis (this takes ownership temporarily)
+        let agent = self.analysis_synthesis_agent.as_mut().unwrap();
+        let (integrated_diagnostic, lens_efficacy) = agent
+            .perform_six_lens_analysis(&charter_content, &intent_category)
+            .await?;
+
+        let integrated_diagnostic_id = format!("{}-integrated-diagnostic", self.run_id);
+        let lens_efficacy_report_id = format!("{}-lens-efficacy-report", self.run_id);
+
+        info!("✓ Integrated_Diagnostic created: {}", integrated_diagnostic_id);
+        info!("✓ Lens_Efficacy_Report created: {}", lens_efficacy_report_id);
+        info!("  Total insights: {}", lens_efficacy.total_insights);
+        info!("  High-value combinations: {}", lens_efficacy.high_value_combinations);
+
+        // Store artifacts
+        self.integrated_diagnostic = Some(integrated_diagnostic.clone());
+        self.lens_efficacy_report = Some(serde_json::to_string_pretty(&lens_efficacy)?);
+
+        info!("Six-lens analysis artifacts stored");
+
+        // Calculate metrics
+        info!("Step 3: Calculating metrics...");
+        let metrics = self.calculate_metrics(&charter_content, &integrated_diagnostic).await?;
+
+        // Record Step 3 completion in ledger
+        let payload = LedgerPayload {
+            action: "step_3_complete".to_string(),
+            inputs: Some(serde_json::json!({
+                "intent_category": intent_category,
+                "charter_size": charter_content.len(),
+            })),
+            outputs: Some(serde_json::json!({
+                "integrated_diagnostic_id": integrated_diagnostic_id,
+                "lens_efficacy_report_id": lens_efficacy_report_id,
+                "total_insights": lens_efficacy.total_insights,
+                "high_value_combinations": lens_efficacy.high_value_combinations,
+            })),
+            rationale: Some("Six-lens analysis complete, integrated diagnostic created".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(3),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Emit Ready_for_Synthesis signal (GATE signal)
+        info!("Emitting Ready_for_Synthesis signal (GATE)");
+
+        let signal_payload = SignalPayload {
+            step_from: 3,
+            step_to: 4,
+            artifacts_produced: vec![
+                integrated_diagnostic_id.clone(),
+                lens_efficacy_report_id.clone(),
+            ],
+            metrics_snapshot: metrics.as_ref().map(|m| serde_json::to_value(m).unwrap()),
+            gate_required: true,
+        };
+
+        let signal = self.signal_router.emit_signal(
+            SignalType::ReadyForSynthesis,
+            &self.run_id,
+            signal_payload,
+        );
+
+        debug!("Signal emitted: {:?}", signal.hash);
+
+        // Record gate signal in ledger
+        let payload = LedgerPayload {
+            action: "gate_signal_emitted".to_string(),
+            inputs: Some(serde_json::json!({
+                "signal_type": "Ready_for_Synthesis",
+                "gate_required": true,
+            })),
+            outputs: Some(serde_json::json!({
+                "signal_hash": signal.hash,
+            })),
+            rationale: Some("Step 3 complete, six-lens analysis complete, awaiting human approval to proceed".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Gate,
+            Some(3),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Transition to gate pending state
+        self.state = RunState::Step3GatePending;
+
+        info!("Step 3 complete - awaiting analysis approval");
+        info!("State: {:?}", self.state);
+
+        Ok((integrated_diagnostic_id, lens_efficacy_report_id))
+    }
+
+    /// Execute Step 4: Synthesis Lock-In
+    ///
+    /// Performs synthesis and model building by:
+    /// - Deriving core thesis from diagnostic
+    /// - Extracting operating principles
+    /// - Selecting model geometry (Linear/Cyclic/Branching)
+    /// - Mapping causality (Causal Spine)
+    /// - Authoring North-Star narrative
+    /// - Creating glossary
+    /// - Documenting limitations
+    /// - Emitting Ready_for_Redesign signal
+    ///
+    /// # Returns
+    /// A tuple of (core_thesis_id, north_star_narrative_id)
+    pub async fn execute_step_4(&mut self) -> Result<(String, String)> {
+        info!("=== Executing Step 4: Synthesis Lock-In ===");
+
+        // Validate state
+        if !matches!(self.state, RunState::Step4Active) {
+            anyhow::bail!("Cannot execute Step 4 - current state: {:?}", self.state);
+        }
+
+        // Ensure we have required artifacts from Step 3
+        let _integrated_diagnostic = self.integrated_diagnostic.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Integrated Diagnostic available - Step 3 must be completed first"))?;
+
+        // Validate analysis_synthesis_agent is configured
+        if self.analysis_synthesis_agent.is_none() {
+            anyhow::bail!("Analysis & Synthesis Agent not configured");
+        }
+
+        info!("Step 4: Performing synthesis lock-in...");
+
+        // Perform Step 4 synthesis (agent already has integrated diagnostic from Step 3)
+        let agent = self.analysis_synthesis_agent.as_mut().unwrap();
+        let synthesis_result = agent
+            .perform_step4_synthesis()
+            .await?;
+
+        let core_thesis_id = format!("{}-core-thesis", self.run_id);
+        let operating_principles_id = format!("{}-operating-principles", self.run_id);
+        let model_geometry_id = format!("{}-model-geometry", self.run_id);
+        let causal_spine_id = format!("{}-causal-spine", self.run_id);
+        let north_star_narrative_id = format!("{}-north-star-narrative", self.run_id);
+        let glossary_id = format!("{}-glossary", self.run_id);
+        let limitations_id = format!("{}-limitations", self.run_id);
+
+        info!("✓ Core_Thesis created: {}", core_thesis_id);
+        info!("✓ Operating_Principles created: {} principles", synthesis_result.operating_principles.len());
+        info!("✓ Model_Geometry created: {:?}", synthesis_result.model_geometry);
+        info!("✓ Causal_Spine created: {}", causal_spine_id);
+        info!("✓ North_Star_Narrative created: {}", north_star_narrative_id);
+        info!("✓ Glossary created: {} terms", synthesis_result.glossary.len());
+        info!("✓ Limitations documented: {} items", synthesis_result.limitations.len());
+
+        if synthesis_result.novel_geometry_flag {
+            info!("⚠ Novel geometry flagged for Learning Harvest");
+        }
+
+        // Store artifacts
+        self.core_thesis = Some(synthesis_result.core_thesis.clone());
+        self.operating_principles = Some(synthesis_result.operating_principles.join("\n"));
+        self.model_geometry = Some(format!("{:?}: {}", synthesis_result.model_geometry, synthesis_result.geometry_rationale));
+        self.causal_spine = Some(synthesis_result.causal_spine.clone());
+        self.north_star_narrative = Some(synthesis_result.north_star_narrative.clone());
+        self.glossary = Some(serde_json::to_string_pretty(&synthesis_result.glossary)?);
+        self.limitations = Some(synthesis_result.limitations.join("\n"));
+
+        info!("Synthesis artifacts stored");
+
+        // Calculate metrics
+        info!("Step 4: Calculating metrics...");
+        let charter = self.charter.as_ref().unwrap();
+        let charter_content = self.extract_content_from_artifact(charter)?;
+
+        // Use the north star narrative as the output for metrics
+        let metrics = self.calculate_metrics(&charter_content, &synthesis_result.north_star_narrative).await?;
+
+        // Record Step 4 completion in ledger
+        let payload = LedgerPayload {
+            action: "step_4_complete".to_string(),
+            inputs: Some(serde_json::json!({
+                "integrated_diagnostic_id": format!("{}-integrated-diagnostic", self.run_id),
+            })),
+            outputs: Some(serde_json::json!({
+                "core_thesis_id": core_thesis_id,
+                "operating_principles_count": synthesis_result.operating_principles.len(),
+                "model_geometry": format!("{:?}", synthesis_result.model_geometry),
+                "glossary_count": synthesis_result.glossary.len(),
+                "limitations_count": synthesis_result.limitations.len(),
+                "novel_geometry": synthesis_result.novel_geometry_flag,
+            })),
+            rationale: Some("Synthesis complete, model locked, ready for redesign".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(4),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Emit Ready_for_Redesign signal (GATE signal)
+        info!("Emitting Ready_for_Redesign signal (GATE)");
+
+        let signal_payload = SignalPayload {
+            step_from: 4,
+            step_to: 5,
+            artifacts_produced: vec![
+                core_thesis_id.clone(),
+                operating_principles_id,
+                model_geometry_id,
+                causal_spine_id,
+                north_star_narrative_id.clone(),
+                glossary_id,
+                limitations_id,
+            ],
+            metrics_snapshot: metrics.as_ref().map(|m| serde_json::to_value(m).unwrap()),
+            gate_required: true,
+        };
+
+        let signal = self.signal_router.emit_signal(
+            SignalType::ReadyForRedesign,
+            &self.run_id,
+            signal_payload,
+        );
+
+        debug!("Signal emitted: {:?}", signal.hash);
+
+        // Record gate signal in ledger
+        let payload = LedgerPayload {
+            action: "gate_signal_emitted".to_string(),
+            inputs: Some(serde_json::json!({
+                "signal_type": "Ready_for_Redesign",
+                "gate_required": true,
+            })),
+            outputs: Some(serde_json::json!({
+                "signal_hash": signal.hash,
+            })),
+            rationale: Some("Step 4 complete, synthesis locked, awaiting human approval to proceed".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Gate,
+            Some(4),
+            Some("Conductor"),
+            payload,
+        );
+
+        // Transition to gate pending state
+        self.state = RunState::Step4GatePending;
+
+        info!("Step 4 complete - awaiting synthesis approval");
+        info!("State: {:?}", self.state);
+
+        Ok((core_thesis_id, north_star_narrative_id))
     }
 }
 

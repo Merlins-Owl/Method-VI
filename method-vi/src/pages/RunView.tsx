@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
 import MainLayout from '../components/layout/MainLayout';
 import Step0View from '../components/steps/Step0View';
 import Step1View from '../components/steps/Step1View';
+import Step2View from '../components/steps/Step2View';
+import Step3View from '../components/steps/Step3View';
 import { MetricsState } from '../types/metrics';
-import { generateMockMetrics, MOCK_SCENARIOS } from '../utils/mockMetrics';
+import { MOCK_SCENARIOS } from '../utils/mockMetrics';
 
 interface IntentSummary {
   user_intent: string;
@@ -17,7 +19,6 @@ interface IntentSummary {
 
 export default function RunView() {
   const { runId } = useParams<{ runId: string }>();
-  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
   const [metrics, setMetrics] = useState<MetricsState>(MOCK_SCENARIOS.step0Start);
 
@@ -68,6 +69,16 @@ export default function RunView() {
     setCurrentStep(2);
   };
 
+  const handleGovernanceCalibrated = async () => {
+    console.log('Governance calibrated, moving to Step 3');
+    setCurrentStep(3);
+  };
+
+  const handleAnalysisComplete = async () => {
+    console.log('Multi-angle analysis complete, moving to Step 4');
+    setCurrentStep(4);
+  };
+
   // Render step-specific view
   const renderStepView = () => {
     switch (currentStep) {
@@ -84,6 +95,22 @@ export default function RunView() {
           <Step1View
             runId={runId || ''}
             onBaselineFrozen={handleBaselineFrozen}
+          />
+        );
+
+      case 2:
+        return (
+          <Step2View
+            runId={runId || ''}
+            onGovernanceCalibrated={handleGovernanceCalibrated}
+          />
+        );
+
+      case 3:
+        return (
+          <Step3View
+            runId={runId || ''}
+            onAnalysisComplete={handleAnalysisComplete}
           />
         );
 
