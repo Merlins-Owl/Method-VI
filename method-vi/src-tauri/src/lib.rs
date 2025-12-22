@@ -60,6 +60,7 @@ pub fn run() {
             commands::execute_step_3,
             commands::execute_step_4,
             commands::execute_step_5,
+            commands::execute_step_6,
             commands::approve_gate,
             commands::reject_gate,
             commands::submit_clarifications,

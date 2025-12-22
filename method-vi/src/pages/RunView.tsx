@@ -8,6 +8,7 @@ import Step2View from '../components/steps/Step2View';
 import Step3View from '../components/steps/Step3View';
 import Step4View from '../components/steps/Step4View';
 import Step5View from '../components/steps/Step5View';
+import Step6View from '../components/steps/Step6View';
 import { MetricsState } from '../types/metrics';
 import { MOCK_SCENARIOS } from '../utils/mockMetrics';
 
@@ -91,6 +92,11 @@ export default function RunView() {
     setCurrentStep(6);
   };
 
+  const handleValidationComplete = async () => {
+    console.log('Validation complete, run finished');
+    setCurrentStep(7);  // Completed state
+  };
+
   // Render step-specific view
   const renderStepView = () => {
     switch (currentStep) {
@@ -140,6 +146,32 @@ export default function RunView() {
             runId={runId || ''}
             onFrameworkComplete={handleFrameworkComplete}
           />
+        );
+
+      case 6:
+        return (
+          <Step6View
+            runId={runId || ''}
+            onValidationComplete={handleValidationComplete}
+          />
+        );
+
+      case 7:
+        return (
+          <div className="max-w-4xl mx-auto p-8">
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center">
+              <div className="text-6xl mb-4">✅</div>
+              <h2 className="text-3xl font-bold text-green-400 mb-4">
+                Run Complete
+              </h2>
+              <p className="text-gray-300 mb-4">
+                The Method-VI run has been completed successfully.
+              </p>
+              <p className="text-gray-400 text-sm">
+                All validation steps passed. Results are available for review.
+              </p>
+            </div>
+          </div>
         );
 
       default:

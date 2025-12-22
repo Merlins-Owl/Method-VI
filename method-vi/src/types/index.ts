@@ -46,6 +46,8 @@ export type RunState =
   | { type: 'Step4GatePending' }
   | { type: 'Step5Active' }
   | { type: 'Step5GatePending' }
+  | { type: 'Step6Active' }
+  | { type: 'Step6GatePending' }
   | { type: 'FutureStep'; step: number }
   | { type: 'Completed' }
   | { type: 'Halted'; reason: string };
@@ -123,6 +125,35 @@ export interface Step5Response {
     sec: number | null;
     pci: number | null;
   } | null;
+}
+
+// Step 6: Validation & Assurance Types
+export interface Step6Response {
+  validation_outcome: string;  // "PASS" / "FAIL" / "WARNING"
+  validation_matrix: string;
+  semantic_table: string;
+  evidence_report: string;
+  critical_6_scores: Critical6Scores;
+  exceptional_flag: boolean;
+  dimension_results: DimensionResult[];
+}
+
+export interface Critical6Scores {
+  ci: number;   // Coherence Index
+  ev: number;   // Expected Value
+  ias: number;  // Intent Alignment Score
+  efi: number;  // Efficacy Index
+  sec: number;  // Scope Elasticity Compliance
+  pci: number;  // Pattern Confidence Index
+  all_pass: boolean;
+}
+
+export interface DimensionResult {
+  dimension_name: string;
+  status: string;  // "Pass" / "Fail" / "Warning"
+  score: number;
+  findings: string[];
+  failures: string[];
 }
 
 export type ModelGeometry = 'Linear' | 'Cyclic' | 'Branching';

@@ -6,6 +6,7 @@ use crate::agents::analysis_synthesis::AnalysisSynthesisAgent;
 use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent};
 use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
 use crate::agents::structure_redesign::StructureRedesignAgent;
+use crate::agents::validation_learning::ValidationLearningAgent;
 use crate::context::{ContextManager, Mode, Role, RunContext, Signal as ContextSignal};
 use crate::ledger::{EntryType, LedgerManager, LedgerPayload, LedgerState};
 use crate::signals::{SignalPayload, SignalRouter, SignalType};
@@ -49,7 +50,13 @@ pub enum RunState {
     /// Waiting for gate approval (framework ready)
     Step5GatePending,
 
-    /// Step 6: Future steps (not yet implemented)
+    /// Step 6: Validation & Assurance (quality verification)
+    Step6Active,
+
+    /// Waiting for gate approval (validation complete)
+    Step6GatePending,
+
+    /// Step 6.5 and beyond: Future steps (not yet implemented)
     FutureStep(u8),
 
     /// Run completed
@@ -69,6 +76,7 @@ impl RunState {
             RunState::Step3Active | RunState::Step3GatePending => 3,
             RunState::Step4Active | RunState::Step4GatePending => 4,
             RunState::Step5Active | RunState::Step5GatePending => 5,
+            RunState::Step6Active | RunState::Step6GatePending => 6,
             RunState::FutureStep(n) => *n,
             RunState::Completed => 7,
             RunState::Halted { .. } => 255, // Special value for halted
@@ -85,6 +93,7 @@ impl RunState {
                 | RunState::Step3GatePending
                 | RunState::Step4GatePending
                 | RunState::Step5GatePending
+                | RunState::Step6GatePending
         )
     }
 }
@@ -147,6 +156,12 @@ pub struct Orchestrator {
     /// Step 5 artifacts (structure & redesign)
     pub framework_architecture: Option<String>,
 
+    /// Step 6 artifacts (validation & assurance)
+    pub validation_matrix: Option<String>,
+    pub semantic_table: Option<String>,
+    pub evidence_report: Option<String>,
+    pub validation_outcome: Option<String>,  // PASS/FAIL/WARNING
+
     /// Scope & Pattern Agent (optional - if None, uses stub)
     scope_agent: Option<ScopePatternAgent>,
 
@@ -158,6 +173,9 @@ pub struct Orchestrator {
 
     /// Analysis & Synthesis Agent (optional - if None, uses stub)
     analysis_synthesis_agent: Option<AnalysisSynthesisAgent>,
+
+    /// Validation & Learning Agent (optional - if None, Step 6 unavailable)
+    validation_agent: Option<ValidationLearningAgent>,
 
     /// Latest calculated metrics from Governance Agent
     pub latest_metrics: Option<CriticalMetrics>,
@@ -196,6 +214,14 @@ impl Orchestrator {
         self
     }
 
+    /// Set the Validation & Learning Agent for this orchestrator
+    ///
+    /// This enables validation & assurance (Step 6) and learning harvest (Step 6.5).
+    pub fn with_validation_agent(mut self, agent: ValidationLearningAgent) -> Self {
+        self.validation_agent = Some(agent);
+        self
+    }
+
     /// Create a new Orchestrator for a run
     ///
     /// # Arguments
@@ -230,10 +256,15 @@ impl Orchestrator {
             glossary: None,
             limitations: None,
             framework_architecture: None,
+            validation_matrix: None,
+            semantic_table: None,
+            evidence_report: None,
+            validation_outcome: None,
             scope_agent: None,            // Will be set via with_scope_agent()
             governance_agent: None,       // Will be set via with_governance_agent()
             structure_agent: None,        // Will be set via with_structure_agent()
             analysis_synthesis_agent: None, // Will be set via with_analysis_synthesis_agent()
+            validation_agent: None,       // Will be set via with_validation_agent()
             latest_metrics: None,
         }
     }
@@ -266,6 +297,8 @@ impl Orchestrator {
             RunState::Step4GatePending => ContextSignal::AwaitingGate,
             RunState::Step5Active => ContextSignal::Active,
             RunState::Step5GatePending => ContextSignal::AwaitingGate,
+            RunState::Step6Active => ContextSignal::Active,
+            RunState::Step6GatePending => ContextSignal::AwaitingGate,
             RunState::Completed => ContextSignal::Completed,
             RunState::Halted { .. } => ContextSignal::Halted,
             _ => ContextSignal::Active,
@@ -582,10 +615,38 @@ impl Orchestrator {
                     payload,
                 );
 
-                // Transition to Step 6 (future implementation)
-                self.state = RunState::FutureStep(6);
+                // Transition to Step 6
+                self.state = RunState::Step6Active;
 
                 info!("✓ Framework gate approved - transitioning to Step 6");
+                info!("Active role: {:?}", self.active_role);
+
+                Ok(true)
+            }
+            RunState::Step6GatePending => {
+                // Record gate approval in ledger
+                let payload = LedgerPayload {
+                    action: "gate_approved".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "gate": "Validation_Complete",
+                        "approver": approver,
+                    })),
+                    outputs: None,
+                    rationale: Some("Human approved validation results - run complete or proceed to learning harvest".to_string()),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(6),
+                    Some("Observer"),
+                    payload,
+                );
+
+                // Transition to Completed (Step 6.5 will be future implementation)
+                self.state = RunState::Completed;
+
+                info!("✓ Validation gate approved - run completed");
                 info!("Active role: {:?}", self.active_role);
 
                 Ok(true)
@@ -1670,6 +1731,190 @@ impl Orchestrator {
         info!("State: {:?}", self.state);
 
         Ok(framework_architecture_id)
+    }
+
+    /// Execute Step 6: Validation & Assurance
+    ///
+    /// Performs comprehensive validation across 6 dimensions:
+    /// - Logic Validation (reasoning chains)
+    /// - Semantic Validation (Glossary consistency)
+    /// - Clarity Assessment (readability)
+    /// - Evidence Audit (substantiation)
+    /// - Scope Compliance (Charter boundaries)
+    /// - Process Coherence (Architecture Map adherence)
+    ///
+    /// Enforces Critical 6 metrics and determines next step based on results.
+    ///
+    /// # Returns
+    /// The validation outcome ("PASS" / "FAIL" / "WARNING")
+    pub async fn execute_step_6(&mut self) -> Result<String> {
+        info!("=== Executing Step 6: Validation & Assurance ===");
+
+        // Validate state
+        if !matches!(self.state, RunState::Step6Active) {
+            anyhow::bail!("Cannot execute Step 6 - current state: {:?}", self.state);
+        }
+
+        // Ensure we have required artifacts from Step 5
+        let framework_content = self.framework_architecture.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No framework architecture available - Step 5 must be completed first"))?;
+
+        // Ensure we have Charter and Core Thesis for validation
+        let charter_content = self.charter.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Charter available"))?;
+
+        let core_thesis = self.core_thesis.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Core Thesis available - Step 4 must be completed first"))?;
+
+        let glossary = self.glossary.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Glossary available - Step 4 must be completed first"))?;
+
+        let architecture_map = self.architecture_map.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Architecture Map available - Step 1 must be completed first"))?;
+
+        // Validate validation_agent is configured
+        if self.validation_agent.is_none() {
+            anyhow::bail!("Validation & Learning Agent not configured");
+        }
+
+        info!("Step 6: Running comprehensive validation...");
+
+        // Extract charter objectives (simplified extraction)
+        let charter_objectives_content = self.extract_content_from_artifact(charter_content)?;
+
+        // Generate Steno-Ledger for validation context
+        let steno_ledger = self.generate_steno_ledger();
+
+        // Call Validation & Learning Agent
+        let agent = self.validation_agent.as_mut().unwrap();
+        let validation_result = agent
+            .validate_framework(
+                &self.run_id,
+                framework_content,
+                &charter_objectives_content,
+                core_thesis,
+                glossary,
+                architecture_map,
+                &steno_ledger,
+            )
+            .await?;
+
+        info!("✓ Validation complete");
+
+        // Store validation artifacts
+        self.validation_matrix = Some(validation_result.validation_matrix.clone());
+        self.semantic_table = Some(validation_result.semantic_table.clone());
+        self.evidence_report = Some(validation_result.evidence_report.clone());
+
+        // Determine outcome
+        let outcome = match validation_result.overall_status {
+            crate::agents::validation_learning::ValidationStatus::Pass => "PASS",
+            crate::agents::validation_learning::ValidationStatus::Fail => "FAIL",
+            crate::agents::validation_learning::ValidationStatus::Warning => "WARNING",
+        };
+        self.validation_outcome = Some(outcome.to_string());
+
+        info!("Validation outcome: {}", outcome);
+
+        // Log Critical 6 scores
+        let scores = &validation_result.critical_6_scores;
+        info!("Critical 6 Metrics:");
+        info!("  CI:  {:.2} (target ≥ 0.80)", scores.ci);
+        info!("  EV:  {:.2} (target ± 0.10)", scores.ev);
+        info!("  IAS: {:.2} (target ≥ 0.80)", scores.ias);
+        info!("  EFI: {:.2} (target ≥ 0.95)", scores.efi);
+        info!("  SEC: {:.2} (target = 1.00)", scores.sec);
+        info!("  PCI: {:.2} (target ≥ 0.90)", scores.pci);
+
+        // Check for exceptional result (CI ≥ 0.85 triggers Step 6.5)
+        if validation_result.exceptional_flag {
+            info!("✓ EXCEPTIONAL RESULT: CI ≥ 0.85 - Step 6.5 Learning Harvest will be available");
+        }
+
+        // Record Step 6 completion in ledger
+        let payload = LedgerPayload {
+            action: "step_6_complete".to_string(),
+            inputs: Some(serde_json::json!({
+                "framework_architecture_id": format!("{}-framework-architecture", self.run_id),
+            })),
+            outputs: Some(serde_json::json!({
+                "validation_outcome": outcome,
+                "critical_6_all_pass": scores.all_pass(),
+                "exceptional_flag": validation_result.exceptional_flag,
+            })),
+            rationale: Some(format!(
+                "Validation complete. Outcome: {}. Critical 6 all pass: {}",
+                outcome,
+                scores.all_pass()
+            )),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(6),
+            Some("Examiner"),
+            payload,
+        );
+
+        // Emit Validation_Complete signal (GATE signal)
+        info!("Emitting Validation_Complete signal (GATE)");
+
+        let signal_payload = SignalPayload {
+            step_from: 6,
+            step_to: 7,  // Either Closure or 6.5
+            artifacts_produced: vec![
+                format!("{}-validation-matrix", self.run_id),
+                format!("{}-semantic-table", self.run_id),
+                format!("{}-evidence-report", self.run_id),
+            ],
+            metrics_snapshot: Some(serde_json::json!({
+                "ci": scores.ci,
+                "ev": scores.ev,
+                "ias": scores.ias,
+                "efi": scores.efi,
+                "sec": scores.sec,
+                "pci": scores.pci,
+            })),
+            gate_required: true,
+        };
+
+        let signal = self.signal_router.emit_signal(
+            SignalType::ValidationComplete,
+            &self.run_id,
+            signal_payload,
+        );
+
+        debug!("Signal emitted: {:?}", signal.hash);
+
+        // Record gate signal in ledger
+        let payload = LedgerPayload {
+            action: "gate_signal_emitted".to_string(),
+            inputs: Some(serde_json::json!({
+                "signal_type": "Validation_Complete",
+                "gate_required": true,
+            })),
+            outputs: Some(serde_json::json!({
+                "signal_hash": signal.hash,
+            })),
+            rationale: Some("Step 6 complete, validation results ready, awaiting human approval".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Gate,
+            Some(6),
+            Some("Examiner"),
+            payload,
+        );
+
+        // Transition to gate pending state
+        self.state = RunState::Step6GatePending;
+
+        info!("Step 6 complete - awaiting validation approval");
+        info!("State: {:?}", self.state);
+
+        Ok(outcome.to_string())
     }
 }
 
