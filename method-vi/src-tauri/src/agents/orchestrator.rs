@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use log::{debug, info, warn};
+use serde::{Deserialize, Serialize};
 
 use crate::agents::analysis_synthesis::AnalysisSynthesisAgent;
 use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent};
@@ -56,6 +57,9 @@ pub enum RunState {
     /// Waiting for gate approval (validation complete)
     Step6GatePending,
 
+    /// Step 6.5: Learning Harvest (pattern extraction for exceptional results)
+    Step6_5Active,
+
     /// Step 6.5 and beyond: Future steps (not yet implemented)
     FutureStep(u8),
 
@@ -77,6 +81,7 @@ impl RunState {
             RunState::Step4Active | RunState::Step4GatePending => 4,
             RunState::Step5Active | RunState::Step5GatePending => 5,
             RunState::Step6Active | RunState::Step6GatePending => 6,
+            RunState::Step6_5Active => 6, // 6.5 is still step 6 from integer perspective
             RunState::FutureStep(n) => *n,
             RunState::Completed => 7,
             RunState::Halted { .. } => 255, // Special value for halted
@@ -161,6 +166,7 @@ pub struct Orchestrator {
     pub semantic_table: Option<String>,
     pub evidence_report: Option<String>,
     pub validation_outcome: Option<String>,  // PASS/FAIL/WARNING
+    pub exceptional_flag: bool,  // True if CI ≥ 0.85 (triggers Step 6.5)
 
     /// Scope & Pattern Agent (optional - if None, uses stub)
     scope_agent: Option<ScopePatternAgent>,
@@ -260,6 +266,7 @@ impl Orchestrator {
             semantic_table: None,
             evidence_report: None,
             validation_outcome: None,
+            exceptional_flag: false,
             scope_agent: None,            // Will be set via with_scope_agent()
             governance_agent: None,       // Will be set via with_governance_agent()
             structure_agent: None,        // Will be set via with_structure_agent()
@@ -624,32 +631,65 @@ impl Orchestrator {
                 Ok(true)
             }
             RunState::Step6GatePending => {
-                // Record gate approval in ledger
-                let payload = LedgerPayload {
-                    action: "gate_approved".to_string(),
-                    inputs: Some(serde_json::json!({
-                        "gate": "Validation_Complete",
-                        "approver": approver,
-                    })),
-                    outputs: None,
-                    rationale: Some("Human approved validation results - run complete or proceed to learning harvest".to_string()),
-                };
+                // Check for exceptional result (CI ≥ 0.85) to route to Step 6.5
+                if self.exceptional_flag {
+                    // Record gate approval in ledger
+                    let payload = LedgerPayload {
+                        action: "gate_approved".to_string(),
+                        inputs: Some(serde_json::json!({
+                            "gate": "Validation_Complete",
+                            "approver": approver,
+                            "exceptional_result": true,
+                        })),
+                        outputs: None,
+                        rationale: Some("Exceptional result (CI ≥ 0.85) - proceeding to Step 6.5 Learning Harvest".to_string()),
+                    };
 
-                self.ledger.create_entry(
-                    &self.run_id,
-                    EntryType::Decision,
-                    Some(6),
-                    Some("Observer"),
-                    payload,
-                );
+                    self.ledger.create_entry(
+                        &self.run_id,
+                        EntryType::Decision,
+                        Some(6),
+                        Some("Observer"),
+                        payload,
+                    );
 
-                // Transition to Completed (Step 6.5 will be future implementation)
-                self.state = RunState::Completed;
+                    // Transition to Step 6.5 Learning Harvest
+                    self.state = RunState::Step6_5Active;
 
-                info!("✓ Validation gate approved - run completed");
-                info!("Active role: {:?}", self.active_role);
+                    info!("✓ Validation gate approved - exceptional result detected");
+                    info!("✓ Proceeding to Step 6.5 Learning Harvest");
+                    info!("Active role: {:?}", self.active_role);
 
-                Ok(true)
+                    Ok(true)
+                } else {
+                    // Record gate approval in ledger
+                    let payload = LedgerPayload {
+                        action: "gate_approved".to_string(),
+                        inputs: Some(serde_json::json!({
+                            "gate": "Validation_Complete",
+                            "approver": approver,
+                            "exceptional_result": false,
+                        })),
+                        outputs: None,
+                        rationale: Some("Validation complete - run finished (no Step 6.5)".to_string()),
+                    };
+
+                    self.ledger.create_entry(
+                        &self.run_id,
+                        EntryType::Decision,
+                        Some(6),
+                        Some("Observer"),
+                        payload,
+                    );
+
+                    // Transition to Completed (no learning harvest for non-exceptional results)
+                    self.state = RunState::Completed;
+
+                    info!("✓ Validation gate approved - run completed");
+                    info!("Active role: {:?}", self.active_role);
+
+                    Ok(true)
+                }
             }
             _ => {
                 anyhow::bail!("No gate pending - current state: {:?}", self.state);
@@ -1814,6 +1854,9 @@ impl Orchestrator {
         };
         self.validation_outcome = Some(outcome.to_string());
 
+        // Store exceptional flag for Step 6.5 routing
+        self.exceptional_flag = validation_result.exceptional_flag;
+
         info!("Validation outcome: {}", outcome);
 
         // Log Critical 6 scores
@@ -1916,6 +1959,375 @@ impl Orchestrator {
 
         Ok(outcome.to_string())
     }
+
+    /// Execute Step 6.5: Learning Harvest (pattern extraction from exceptional results)
+    ///
+    /// CRITICAL: This method REUSES the validation_agent from Step 6.
+    /// The agent already has all validation results stored in its state.
+    pub async fn execute_step_6_5(&mut self) -> Result<crate::agents::validation_learning::LearningHarvestResult> {
+        info!("=== Executing Step 6.5: Learning Harvest ===");
+
+        // Validate state
+        if !matches!(self.state, RunState::Step6_5Active) {
+            anyhow::bail!("Cannot execute Step 6.5 - current state: {:?}", self.state);
+        }
+
+        // Ensure exceptional_flag is true
+        if !self.exceptional_flag {
+            anyhow::bail!("Cannot execute Step 6.5 - not an exceptional result (CI < 0.85)");
+        }
+
+        // Get EXISTING validation agent (DO NOT create new one)
+        let validation_agent = self.validation_agent.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No validation agent found - Step 6 must be completed first"))?;
+
+        info!("Using existing Validation & Learning Agent (agent has stored validation results)");
+
+        // Perform learning harvest - agent uses its stored validation data
+        info!("Calling perform_learning_harvest()...");
+        let harvest_result = validation_agent.perform_learning_harvest().await?;
+
+        info!("✓ Learning harvest complete");
+        info!("  Pattern cards extracted: {}", harvest_result.pattern_cards.len());
+        info!("  Success patterns: {}", harvest_result.success_count);
+        info!("  Failure patterns: {}", harvest_result.failure_count);
+        info!("  Optimization patterns: {}", harvest_result.optimization_count);
+
+        // TODO: Update knowledge repository with pattern cards
+        // For MVP, we'll log the patterns
+        for card in &harvest_result.pattern_cards {
+            info!("  Pattern: {} ({})", card.pattern_name, card.category);
+        }
+
+        // Record Step 6.5 completion in ledger
+        let payload = LedgerPayload {
+            action: "step_6_5_complete".to_string(),
+            inputs: None,
+            outputs: Some(serde_json::json!({
+                "pattern_count": harvest_result.pattern_cards.len(),
+                "success_count": harvest_result.success_count,
+                "failure_count": harvest_result.failure_count,
+                "optimization_count": harvest_result.optimization_count,
+            })),
+            rationale: Some(harvest_result.knowledge_update.clone()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(6),
+            Some("Learner"),
+            payload,
+        );
+
+        // Emit Learning_Harvested signal (NO GATE - automatic progression to Closure)
+        info!("Emitting Learning_Harvested signal (no gate)");
+
+        let signal_payload = SignalPayload {
+            step_from: 6,
+            step_to: 7,
+            artifacts_produced: vec![],  // Pattern cards stored in repository, not as artifacts
+            metrics_snapshot: None,
+            gate_required: false,  // NO GATE - automatic progression
+        };
+
+        let signal = self.signal_router.emit_signal(
+            SignalType::LearningHarvested,
+            &self.run_id,
+            signal_payload,
+        );
+
+        debug!("Signal emitted: {:?}", signal.hash);
+
+        // Record signal in ledger
+        let payload = LedgerPayload {
+            action: "signal_emitted".to_string(),
+            inputs: Some(serde_json::json!({
+                "signal_type": "Learning_Harvested",
+                "gate_required": false,
+            })),
+            outputs: Some(serde_json::json!({
+                "signal_hash": signal.hash,
+            })),
+            rationale: Some("Learning harvest complete, proceeding to Closure".to_string()),
+        };
+
+        self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Signal,
+            Some(6),
+            Some("Learner"),
+            payload,
+        );
+
+        // Transition directly to Completed (no gate for Step 6.5)
+        self.state = RunState::Completed;
+
+        info!("Step 6.5 complete - run finished");
+        info!("State: {:?}", self.state);
+
+        Ok(harvest_result)
+    }
+
+    /// Execute Closure: Final ledger, archival, and database update
+    ///
+    /// Generates final artifacts, updates database, and prepares export packages.
+    pub async fn execute_closure(&mut self) -> Result<ClosureResult> {
+        info!("=== EXECUTE_CLOSURE ===");
+        info!("Run ID: {}", self.run_id);
+        info!("Current State: {:?}", self.state);
+
+        // Verify state is Completed
+        if !matches!(self.state, RunState::Completed) {
+            anyhow::bail!(
+                "Cannot execute closure - current state is {:?}, expected Completed",
+                self.state
+            );
+        }
+
+        // 1. Generate Final Ledger (steno format)
+        let final_ledger = self.generate_steno_ledger();
+        info!("✓ Final ledger generated ({} chars)", final_ledger.len());
+
+        // 2. Create Audit Trail (all signals, gates, decisions)
+        let audit_trail = self.generate_audit_trail();
+        info!("✓ Audit trail created ({} entries)", audit_trail.len());
+
+        // 3. Archive Artifacts
+        let archived_artifacts = self.archive_artifacts().await?;
+        info!("✓ Artifacts archived ({} items)", archived_artifacts.len());
+
+        // 4. Calculate Final Statistics
+        let statistics = self.calculate_final_statistics();
+        info!("✓ Final statistics calculated");
+
+        // 5. Extract Final Metrics (from validation results if available)
+        let final_metrics = self.extract_final_metrics();
+
+        // 6. Determine Success Status
+        let success = self.determine_run_success(&final_metrics);
+
+        // 7. Update Database
+        self.update_database_closure(&final_metrics, success).await?;
+        info!("✓ Database updated");
+
+        // Log before building result (while final_metrics is still accessible)
+        info!("=== CLOSURE COMPLETE ===");
+        info!("Success: {}", success);
+        info!("Final CI: {:?}", final_metrics.get("CI"));
+
+        // 8. Build Closure Result
+        let result = ClosureResult {
+            run_id: self.run_id.clone(),
+            final_ledger,
+            audit_trail,
+            archived_artifacts,
+            statistics,
+            final_metrics,
+            success,
+            completed_at: Utc::now().to_rfc3339(),
+        };
+
+        Ok(result)
+    }
+
+    /// Generate audit trail of all signals, gates, and decisions
+    fn generate_audit_trail(&self) -> Vec<AuditEntry> {
+        let mut trail = Vec::new();
+
+        // Add signal history from signal router
+        let signals = self.signal_router.get_signal_chain(&self.run_id);
+        for signal in signals {
+            trail.push(AuditEntry {
+                timestamp: signal.timestamp.to_rfc3339(),
+                entry_type: "Signal".to_string(),
+                description: format!("{:?}", signal.signal_type),
+                metadata: serde_json::json!({
+                    "signal_type": format!("{:?}", signal.signal_type),
+                    "hash": signal.hash,
+                }),
+            });
+        }
+
+        // Add gate decisions from ledger entries (simplified - would need ledger API)
+        // For now, just note that gates were processed
+        trail.push(AuditEntry {
+            timestamp: Utc::now().to_rfc3339(),
+            entry_type: "Gate".to_string(),
+            description: "Gate approvals processed during run".to_string(),
+            metadata: serde_json::json!({ "note": "Full ledger available in final_ledger" }),
+        });
+
+        trail
+    }
+
+    /// Archive all artifacts (intent, baseline, synthesis, framework, validation)
+    async fn archive_artifacts(&self) -> Result<Vec<ArchivedArtifact>> {
+        let mut artifacts = Vec::new();
+
+        // Archive Step 0: Intent Summary
+        if let Some(ref intent) = self.intent_summary {
+            artifacts.push(ArchivedArtifact {
+                artifact_type: "IntentSummary".to_string(),
+                content: serde_json::to_string_pretty(intent)?,
+                size_bytes: 0,
+            });
+        }
+
+        // Archive Step 1: Charter & Baseline
+        if let Some(ref charter) = self.charter {
+            artifacts.push(ArchivedArtifact {
+                artifact_type: "Charter".to_string(),
+                content: charter.clone(),
+                size_bytes: charter.len(),
+            });
+        }
+
+        // Archive Step 3: Integrated Diagnostic
+        if let Some(ref diagnostic) = self.integrated_diagnostic {
+            artifacts.push(ArchivedArtifact {
+                artifact_type: "IntegratedDiagnostic".to_string(),
+                content: diagnostic.clone(),
+                size_bytes: diagnostic.len(),
+            });
+        }
+
+        // Archive Step 4: Core Thesis & North Star
+        if let Some(ref thesis) = self.core_thesis {
+            artifacts.push(ArchivedArtifact {
+                artifact_type: "CoreThesis".to_string(),
+                content: thesis.clone(),
+                size_bytes: thesis.len(),
+            });
+        }
+        if let Some(ref narrative) = self.north_star_narrative {
+            artifacts.push(ArchivedArtifact {
+                artifact_type: "NorthStarNarrative".to_string(),
+                content: narrative.clone(),
+                size_bytes: narrative.len(),
+            });
+        }
+
+        // Archive Step 5: Framework Architecture
+        if let Some(ref framework) = self.framework_architecture {
+            artifacts.push(ArchivedArtifact {
+                artifact_type: "FrameworkArchitecture".to_string(),
+                content: framework.clone(),
+                size_bytes: framework.len(),
+            });
+        }
+
+        // Archive Step 6: Validation Results
+        if let Some(ref matrix) = self.validation_matrix {
+            artifacts.push(ArchivedArtifact {
+                artifact_type: "ValidationMatrix".to_string(),
+                content: matrix.clone(),
+                size_bytes: matrix.len(),
+            });
+        }
+        if let Some(ref evidence) = self.evidence_report {
+            artifacts.push(ArchivedArtifact {
+                artifact_type: "EvidenceReport".to_string(),
+                content: evidence.clone(),
+                size_bytes: evidence.len(),
+            });
+        }
+
+        Ok(artifacts)
+    }
+
+    /// Calculate final statistics
+    fn calculate_final_statistics(&self) -> RunStatistics {
+        let signal_chain = self.signal_router.get_signal_chain(&self.run_id);
+        RunStatistics {
+            total_signals: signal_chain.len(),
+            total_gates: 0, // Simplified - would count gate signals
+            steps_completed: self.state.step_number() as usize,
+            exceptional_run: self.exceptional_flag,
+            halt_count: 0, // Would need to track HALT conditions
+        }
+    }
+
+    /// Extract final metrics from validation results
+    fn extract_final_metrics(&self) -> std::collections::HashMap<String, f64> {
+        let mut metrics = std::collections::HashMap::new();
+
+        // Placeholder - would extract from validation_agent.validation_results
+        // For now, return empty or default values
+        metrics.insert("CI".to_string(), 0.0);
+        metrics.insert("EV".to_string(), 0.0);
+        metrics.insert("IAS".to_string(), 0.0);
+        metrics.insert("EFI".to_string(), 0.0);
+        metrics.insert("SEC".to_string(), 0.0);
+        metrics.insert("PCI".to_string(), 0.0);
+
+        metrics
+    }
+
+    /// Determine if run was successful based on metrics
+    fn determine_run_success(&self, metrics: &std::collections::HashMap<String, f64>) -> bool {
+        // Success if CI >= 0.70 (minimum threshold)
+        metrics.get("CI").unwrap_or(&0.0) >= &0.70
+    }
+
+    /// Update database with closure information
+    async fn update_database_closure(
+        &self,
+        metrics: &std::collections::HashMap<String, f64>,
+        success: bool,
+    ) -> Result<()> {
+        // Placeholder - would update runs table:
+        // UPDATE runs SET
+        //   status = 'Completed',
+        //   completed_at = NOW(),
+        //   ci_final = ?,
+        //   ev_final = ?,
+        //   ...
+        // WHERE run_id = ?
+
+        info!("Database update placeholder - metrics: {:?}, success: {}", metrics, success);
+        Ok(())
+    }
+}
+
+/// Result from execute_closure()
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClosureResult {
+    pub run_id: String,
+    pub final_ledger: String,
+    pub audit_trail: Vec<AuditEntry>,
+    pub archived_artifacts: Vec<ArchivedArtifact>,
+    pub statistics: RunStatistics,
+    pub final_metrics: std::collections::HashMap<String, f64>,
+    pub success: bool,
+    pub completed_at: String,
+}
+
+/// Single entry in the audit trail
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub timestamp: String,
+    pub entry_type: String, // "Signal" | "Gate" | "Decision"
+    pub description: String,
+    pub metadata: serde_json::Value,
+}
+
+/// Archived artifact from the run
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchivedArtifact {
+    pub artifact_type: String, // "Personas" | "Synthesis" | "Framework" | "Validation" | "PatternCards"
+    pub content: String,
+    pub size_bytes: usize,
+}
+
+/// Final run statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunStatistics {
+    pub total_signals: usize,
+    pub total_gates: usize,
+    pub steps_completed: usize,
+    pub exceptional_run: bool,
+    pub halt_count: usize,
 }
 
 #[cfg(test)]

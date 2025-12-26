@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
 import MainLayout from '../components/layout/MainLayout';
 import Step0View from '../components/steps/Step0View';
@@ -9,6 +9,8 @@ import Step3View from '../components/steps/Step3View';
 import Step4View from '../components/steps/Step4View';
 import Step5View from '../components/steps/Step5View';
 import Step6View from '../components/steps/Step6View';
+import Step6_5View from '../components/steps/Step6_5View';
+import ClosureView from '../components/steps/ClosureView';
 import { MetricsState } from '../types/metrics';
 import { MOCK_SCENARIOS } from '../utils/mockMetrics';
 
@@ -22,7 +24,9 @@ interface IntentSummary {
 
 export default function RunView() {
   const { runId } = useParams<{ runId: string }>();
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
+  const [isStep6_5, setIsStep6_5] = useState(false); // Track if we're in Step 6.5
   const [metrics, setMetrics] = useState<MetricsState>(MOCK_SCENARIOS.step0Start);
 
   // Update metrics as steps progress
@@ -92,9 +96,31 @@ export default function RunView() {
     setCurrentStep(6);
   };
 
-  const handleValidationComplete = async () => {
-    console.log('Validation complete, run finished');
-    setCurrentStep(7);  // Completed state
+  const handleValidationComplete = async (exceptionalResult: boolean = false) => {
+    console.log('Validation complete - exceptional result:', exceptionalResult);
+
+    // The approve_gate backend handles routing:
+    // - If exceptional (CI ≥ 0.85): routes to Step6_5Active
+    // - Otherwise: routes to Completed
+
+    if (exceptionalResult) {
+      console.log('Exceptional result detected - transitioning to Step 6.5 Learning Harvest');
+      setIsStep6_5(true);  // Show Step6_5View
+    } else {
+      console.log('Normal result - run completed');
+      setCurrentStep(7);  // Show completion screen
+    }
+  };
+
+  const handleLearningComplete = async () => {
+    console.log('Learning harvest complete, run finished');
+    setIsStep6_5(false);
+    setCurrentStep(7);  // Completed state -> trigger Closure
+  };
+
+  const handleClosureComplete = async () => {
+    console.log('Closure complete, returning to home');
+    navigate('/');  // Return to home page
   };
 
   // Render step-specific view
@@ -149,29 +175,30 @@ export default function RunView() {
         );
 
       case 6:
-        return (
-          <Step6View
-            runId={runId || ''}
-            onValidationComplete={handleValidationComplete}
-          />
-        );
+        // Check if we're in Step 6.5 (Learning Harvest) or Step 6 (Validation)
+        if (isStep6_5) {
+          return (
+            <Step6_5View
+              runId={runId || ''}
+              onLearningComplete={handleLearningComplete}
+            />
+          );
+        } else {
+          return (
+            <Step6View
+              runId={runId || ''}
+              onValidationComplete={handleValidationComplete}
+            />
+          );
+        }
 
       case 7:
+        // Closure: Final ledger, archival, and export
         return (
-          <div className="max-w-4xl mx-auto p-8">
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center">
-              <div className="text-6xl mb-4">✅</div>
-              <h2 className="text-3xl font-bold text-green-400 mb-4">
-                Run Complete
-              </h2>
-              <p className="text-gray-300 mb-4">
-                The Method-VI run has been completed successfully.
-              </p>
-              <p className="text-gray-400 text-sm">
-                All validation steps passed. Results are available for review.
-              </p>
-            </div>
-          </div>
+          <ClosureView
+            runId={runId || ''}
+            onClosureComplete={handleClosureComplete}
+          />
         );
 
       default:

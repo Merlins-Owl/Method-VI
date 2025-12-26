@@ -48,6 +48,7 @@ export type RunState =
   | { type: 'Step5GatePending' }
   | { type: 'Step6Active' }
   | { type: 'Step6GatePending' }
+  | { type: 'Step6_5Active' }
   | { type: 'FutureStep'; step: number }
   | { type: 'Completed' }
   | { type: 'Halted'; reason: string };
@@ -154,6 +155,59 @@ export interface DimensionResult {
   score: number;
   findings: string[];
   failures: string[];
+}
+
+// Step 6.5: Learning Harvest Types
+export interface Step6_5Response {
+  knowledge_update: string;
+  pattern_cards: PatternCard[];
+  success_count: number;
+  failure_count: number;
+  optimization_count: number;
+}
+
+export interface PatternCard {
+  pattern_id: string;
+  pattern_name: string;
+  category: string;           // "Success" / "Failure" / "Optimization"
+  context: string;
+  mechanics: string;
+  efficacy: number;           // 0.0-1.0
+  reusability: string;        // "High" / "Medium" / "Low"
+  recommendation: string;
+}
+
+// Closure Types
+export interface ClosureResponse {
+  run_id: string;
+  final_ledger: string;
+  audit_trail: AuditEntry[];
+  archived_artifacts: ArchivedArtifact[];
+  statistics: RunStatistics;
+  final_metrics: Record<string, number>;
+  success: boolean;
+  completed_at: string;
+}
+
+export interface AuditEntry {
+  timestamp: string;
+  entry_type: string;  // "Signal" | "Gate" | "Decision"
+  description: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ArchivedArtifact {
+  artifact_type: string;  // "Personas" | "Synthesis" | "Framework" | "Validation" | "PatternCards"
+  content: string;
+  size_bytes: number;
+}
+
+export interface RunStatistics {
+  total_signals: number;
+  total_gates: number;
+  steps_completed: number;
+  exceptional_run: boolean;
+  halt_count: number;
 }
 
 export type ModelGeometry = 'Linear' | 'Cyclic' | 'Branching';

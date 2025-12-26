@@ -4,7 +4,7 @@ import { Step6Response, Critical6Scores, DimensionResult } from '../../types';
 
 interface Step6ViewProps {
   runId: string;
-  onValidationComplete: () => void;
+  onValidationComplete: (exceptionalResult?: boolean) => void;
 }
 
 type ViewState = 'initializing' | 'validating' | 'review' | 'approved' | 'error';
@@ -58,8 +58,12 @@ export default function Step6View({ runId, onValidationComplete }: Step6ViewProp
       setViewState('approved');
 
       // Notify parent that validation is complete
+      // Pass exceptional_flag to determine routing to Step 6.5 or Closure
+      const exceptionalResult = result?.exceptional_flag || false;
+      console.log('Exceptional result flag:', exceptionalResult);
+
       setTimeout(() => {
-        onValidationComplete();
+        onValidationComplete(exceptionalResult);
       }, 1500);
     } catch (err) {
       console.error('Error approving validation:', err);
