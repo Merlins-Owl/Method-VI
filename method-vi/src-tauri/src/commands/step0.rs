@@ -210,6 +210,35 @@ pub async fn reject_gate(
     Ok(())
 }
 
+/// Handle human decision on HALT condition
+///
+/// This command is called when metrics trigger a HALT and the run is in Paused state.
+/// The user must decide: proceed anyway, abort the run, or return to previous step.
+#[tauri::command]
+pub async fn handle_halt_decision(
+    decision: String,
+    decider: String,
+    rationale: String,
+    state: State<'_, OrchestratorState>,
+) -> Result<String, String> {
+    info!("=== HANDLE_HALT_DECISION command called ===");
+    info!("Decision: {}", decision);
+    info!("Decider: {}", decider);
+    info!("Rationale: {}", rationale);
+
+    let mut orch_guard = state.0.lock().unwrap();
+    let orchestrator = orch_guard
+        .as_mut()
+        .ok_or_else(|| "No active run found".to_string())?;
+
+    let next_state = orchestrator
+        .handle_halt_decision(&decision, &decider, &rationale)
+        .map_err(|e| format!("Failed to handle HALT decision: {}", e))?;
+
+    info!("HALT decision processed - next state: {}", next_state);
+    Ok(next_state)
+}
+
 /// Submit clarification answers
 ///
 /// This command handles clarification questions if the agent asks for more details.

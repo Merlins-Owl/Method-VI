@@ -66,7 +66,14 @@ pub enum RunState {
     /// Run completed
     Completed,
 
-    /// Run halted
+    /// Run paused due to HALT condition - awaiting human decision
+    Paused {
+        reason: String,
+        step: u8,
+        triggered_metrics: Option<serde_json::Value>,
+    },
+
+    /// Run permanently halted (aborted by user or unrecoverable error)
     Halted { reason: String },
 }
 
@@ -84,6 +91,7 @@ impl RunState {
             RunState::Step6_5Active => 6, // 6.5 is still step 6 from integer perspective
             RunState::FutureStep(n) => *n,
             RunState::Completed => 7,
+            RunState::Paused { step, .. } => *step, // Return the step where pause occurred
             RunState::Halted { .. } => 255, // Special value for halted
         }
     }
@@ -307,6 +315,7 @@ impl Orchestrator {
             RunState::Step6Active => ContextSignal::Active,
             RunState::Step6GatePending => ContextSignal::AwaitingGate,
             RunState::Completed => ContextSignal::Completed,
+            RunState::Paused { .. } => ContextSignal::PausedForReview,
             RunState::Halted { .. } => ContextSignal::Halted,
             _ => ContextSignal::Active,
         }
@@ -734,6 +743,174 @@ impl Orchestrator {
         Ok(())
     }
 
+    /// Handle human decision on HALT condition
+    ///
+    /// When a HALT condition is detected, the run enters Paused state.
+    /// The human must decide whether to proceed anyway, abort, or return to previous step.
+    ///
+    /// # Arguments
+    /// * `decision` - "proceed", "abort", or "return"
+    /// * `decider` - Name of person making the decision
+    /// * `rationale` - Explanation of why they made this decision
+    ///
+    /// # Returns
+    /// The next state the orchestrator should transition to
+    pub fn handle_halt_decision(&mut self, decision: &str, decider: &str, rationale: &str) -> Result<String> {
+        info!("HALT decision received: {} by {}", decision, decider);
+        info!("Rationale: {}", rationale);
+
+        // Verify we're actually in Paused state
+        let (halt_reason, paused_step, triggered_metrics) = match &self.state {
+            RunState::Paused { reason, step, triggered_metrics } => {
+                (reason.clone(), *step, triggered_metrics.clone())
+            }
+            _ => {
+                anyhow::bail!("Cannot handle HALT decision - not in Paused state. Current state: {:?}", self.state);
+            }
+        };
+
+        match decision.to_lowercase().as_str() {
+            "proceed" => {
+                info!("⚠️ HALT OVERRIDE: User chose to proceed despite metrics failure");
+
+                // Record override in ledger
+                let payload = LedgerPayload {
+                    action: "halt_override_proceed".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "decider": decider,
+                        "rationale": rationale,
+                        "original_halt_reason": halt_reason,
+                        "step": paused_step,
+                    })),
+                    outputs: Some(serde_json::json!({
+                        "triggered_metrics": triggered_metrics,
+                    })),
+                    rationale: Some(format!("Human override: {}", rationale)),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(paused_step as i32),
+                    Some("Human"),
+                    payload,
+                );
+
+                // Emit signal for run resumed
+                self.signal_router.emit_signal(
+                    SignalType::MetricsWarning, // Use warning signal to indicate override
+                    &self.run_id,
+                    SignalPayload {
+                        step_from: paused_step as i32,
+                        step_to: paused_step as i32,
+                        artifacts_produced: vec![],
+                        metrics_snapshot: triggered_metrics,
+                        gate_required: false,
+                    },
+                );
+
+                // Transition to appropriate GatePending state
+                let next_state = match paused_step {
+                    2 => "Step2GatePending",
+                    3 => "Step3GatePending",
+                    4 => "Step4GatePending",
+                    5 => "Step5GatePending",
+                    6 => "Step6GatePending",
+                    _ => {
+                        anyhow::bail!("Cannot resume from step {}", paused_step);
+                    }
+                };
+
+                // Update state to gate pending
+                self.state = match paused_step {
+                    2 => RunState::Step2GatePending,
+                    3 => RunState::Step3GatePending,
+                    4 => RunState::Step4GatePending,
+                    5 => RunState::Step5GatePending,
+                    6 => RunState::Step6GatePending,
+                    _ => {
+                        anyhow::bail!("Invalid paused step: {}", paused_step);
+                    }
+                };
+
+                info!("✓ Run resumed - awaiting gate approval to proceed to next step");
+                info!("State: {:?}", self.state);
+
+                Ok(next_state.to_string())
+            }
+            "abort" => {
+                info!("HALT CONFIRMED: User chose to abort run");
+
+                // Record abort in ledger
+                let payload = LedgerPayload {
+                    action: "halt_confirmed_abort".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "decider": decider,
+                        "rationale": rationale,
+                        "original_halt_reason": halt_reason,
+                        "step": paused_step,
+                    })),
+                    outputs: None,
+                    rationale: Some(format!("Human confirmed abort: {}", rationale)),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(paused_step as i32),
+                    Some("Human"),
+                    payload,
+                );
+
+                // Transition to permanently Halted
+                self.state = RunState::Halted {
+                    reason: format!("Aborted by {} at Step {}: {}", decider, paused_step, rationale),
+                };
+
+                info!("Run permanently halted");
+
+                Ok("Halted".to_string())
+            }
+            "return" => {
+                // For MVP, return to previous step is not implemented
+                // Just abort with explanation
+                warn!("RETURN TO PREVIOUS STEP not implemented in MVP - aborting instead");
+
+                let payload = LedgerPayload {
+                    action: "halt_return_requested".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "decider": decider,
+                        "rationale": rationale,
+                        "requested_action": "return",
+                        "original_halt_reason": halt_reason,
+                        "step": paused_step,
+                    })),
+                    outputs: None,
+                    rationale: Some("Return to previous step not supported in MVP - run aborted".to_string()),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(paused_step as i32),
+                    Some("Human"),
+                    payload,
+                );
+
+                self.state = RunState::Halted {
+                    reason: format!("Return to previous step not supported (requested by {})", decider),
+                };
+
+                info!("Run halted - return not supported in MVP");
+
+                Ok("Halted".to_string())
+            }
+            _ => {
+                anyhow::bail!("Invalid HALT decision: '{}'. Must be 'proceed', 'abort', or 'return'", decision);
+            }
+        }
+    }
+
     /// Execute Step 1: Baseline Establishment
     ///
     /// Creates the 4 immutable artifacts that define the run baseline:
@@ -996,12 +1173,19 @@ impl Orchestrator {
 
         // Calculate initial metrics from baseline
         info!("Step 2: Calculating initial metrics...");
-        let initial_metrics = self.governance_agent.as_ref().unwrap()
-            .calculate_metrics(&charter_content, &charter_content, 2)
-            .await?;
+        let (metrics_opt, halt_triggered) = self.calculate_metrics(&charter_content, &charter_content).await?;
 
-        // Store metrics
-        self.latest_metrics = Some(initial_metrics.clone());
+        let initial_metrics = metrics_opt.ok_or_else(|| anyhow::anyhow!("Failed to calculate metrics in Step 2"))?;
+
+        // CRITICAL: If HALT was triggered, do NOT emit progression signal
+        if halt_triggered {
+            warn!("Step 2 HALTED - run is PAUSED, no gate signal emitted");
+            warn!("State: {:?}", self.state);
+            warn!("Human decision required to proceed");
+
+            // Return early - do not proceed to gate
+            return Ok((governance_summary_id, domain_snapshots_id));
+        }
 
         info!("✓ Initial metrics calculated:");
         if let Some(ci) = &initial_metrics.ci {
@@ -1019,7 +1203,7 @@ impl Orchestrator {
             });
         }
 
-        // Record Step 2 completion in ledger
+        // Record Step 2 completion in ledger (only if not halted)
         let payload = LedgerPayload {
             action: "step_2_complete".to_string(),
             inputs: Some(serde_json::json!({
@@ -1135,6 +1319,69 @@ impl Orchestrator {
         Ok(content_lines.join("\n"))
     }
 
+    /// Extract objectives from Charter content for relevance checking
+    ///
+    /// Parses the Charter markdown to find Primary and Secondary Objectives.
+    /// Returns a list of objective statements.
+    fn extract_objectives_from_charter(&self, charter_content: &str) -> Result<Vec<String>> {
+        let mut objectives = Vec::new();
+        let mut in_objectives_section = false;
+
+        for line in charter_content.lines() {
+            let trimmed = line.trim();
+
+            // Check if we're entering an objectives section
+            if trimmed.contains("Objective") && (trimmed.starts_with("##") || trimmed.starts_with("**")) {
+                in_objectives_section = true;
+
+                // If the objective is on the same line (e.g., "**Primary Objective:** Description")
+                if let Some(colon_pos) = trimmed.find(':') {
+                    let objective = trimmed[colon_pos + 1..].trim();
+                    if !objective.is_empty() {
+                        objectives.push(objective.to_string());
+                    }
+                }
+                continue;
+            }
+
+            // If we're in objectives section, collect bullet points or text
+            if in_objectives_section {
+                // Stop if we hit a new section header (## Something else)
+                if trimmed.starts_with("##") && !trimmed.contains("Objective") {
+                    in_objectives_section = false;
+                    continue;
+                }
+
+                // Collect bullet points
+                if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+                    let objective = trimmed.trim_start_matches("- ").trim_start_matches("* ").trim();
+                    if !objective.is_empty() {
+                        objectives.push(objective.to_string());
+                    }
+                }
+                // Collect numbered lists
+                else if trimmed.len() > 2 && trimmed.chars().next().unwrap().is_numeric() && trimmed.chars().nth(1) == Some('.') {
+                    let objective = trimmed.splitn(2, '.').nth(1).unwrap_or("").trim();
+                    if !objective.is_empty() {
+                        objectives.push(objective.to_string());
+                    }
+                }
+                // Collect plain text lines (non-empty, non-header)
+                else if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    objectives.push(trimmed.to_string());
+                }
+            }
+        }
+
+        if objectives.is_empty() {
+            warn!("No objectives found in Charter - using fallback");
+            objectives.push("Analyze and synthesize user-provided content according to Method-VI framework".to_string());
+        }
+
+        info!("Extracted {} objectives from Charter", objectives.len());
+        Ok(objectives)
+    }
+
     /// Validate an action is allowed in the current state
     ///
     /// Uses the Ledger Manager to validate state transitions
@@ -1143,6 +1390,7 @@ impl Orchestrator {
             RunState::Step0Active => LedgerState::Step0Active,
             RunState::Step0GatePending | RunState::Step1GatePending => LedgerState::GatePending,
             RunState::Step1Active => LedgerState::Normal,
+            RunState::Paused { .. } => LedgerState::HaltActive, // Paused requires decision
             RunState::Halted { .. } => LedgerState::HaltActive,
             _ => LedgerState::Normal,
         };
@@ -1165,6 +1413,7 @@ impl Orchestrator {
             RunState::Step0GatePending | RunState::Step1GatePending | RunState::Step2GatePending => LedgerState::GatePending,
             RunState::Step1Active => LedgerState::BaselineFrozen, // After baseline is frozen
             RunState::Step2Active => LedgerState::Normal,
+            RunState::Paused { .. } => LedgerState::HaltActive, // Paused awaits human decision
             RunState::Halted { .. } => LedgerState::HaltActive,
             _ => LedgerState::Normal,
         }
@@ -1247,12 +1496,12 @@ impl Orchestrator {
     /// * `charter_objectives` - Charter objectives for alignment checking
     ///
     /// # Returns
-    /// The calculated metrics, or None if governance agent is not available
+    /// A tuple of (Option<CriticalMetrics>, bool) where the bool indicates if HALT was triggered
     pub async fn calculate_metrics(
         &mut self,
         content: &str,
         charter_objectives: &str,
-    ) -> Result<Option<CriticalMetrics>> {
+    ) -> Result<(Option<CriticalMetrics>, bool)> {
         if let Some(ref agent) = self.governance_agent {
             info!("Calculating metrics for step {}", self.state.step_number());
 
@@ -1260,37 +1509,68 @@ impl Orchestrator {
                 .calculate_metrics(content, charter_objectives, self.state.step_number())
                 .await?;
 
+            let current_step = self.state.step_number();
+            let mut halt_triggered = false;
+
             // Check for HALT conditions
             if let Some(halt_reason) = agent.check_halt_conditions(&metrics) {
-                warn!("HALT condition detected: {}", halt_reason);
-                self.state = RunState::Halted {
+                warn!("⚠️ HALT CONDITION DETECTED: {}", halt_reason);
+                halt_triggered = true;
+
+                // Set state to Paused (not Halted - user can override)
+                self.state = RunState::Paused {
                     reason: halt_reason.clone(),
+                    step: current_step,
+                    triggered_metrics: Some(serde_json::to_value(&metrics)?),
                 };
+
+                info!("Run PAUSED - awaiting human decision on HALT");
 
                 // Emit HALT signal
                 self.signal_router.emit_signal(
                     SignalType::Halt,
                     &self.run_id,
                     SignalPayload {
-                        step_from: self.state.step_number() as i32,
-                        step_to: self.state.step_number() as i32,
+                        step_from: current_step as i32,
+                        step_to: current_step as i32,
                         artifacts_produced: vec![],
                         metrics_snapshot: Some(serde_json::to_value(&metrics)?),
-                        gate_required: false,
+                        gate_required: false, // HALT doesn't require gate approval - it blocks immediately
                     },
                 );
+
+                // Record HALT in ledger
+                let payload = LedgerPayload {
+                    action: "halt_triggered".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "step": current_step,
+                        "reason": halt_reason,
+                    })),
+                    outputs: Some(serde_json::json!({
+                        "metrics": metrics,
+                    })),
+                    rationale: Some(format!("HALT condition detected: {}", halt_reason)),
+                };
+
+                self.ledger.create_entry(
+                    &self.run_id,
+                    EntryType::Decision,
+                    Some(current_step as i32),
+                    Some("Governance"),
+                    payload,
+                );
             }
-            // Check for PAUSE (warning) conditions
+            // Check for PAUSE (warning) conditions - only if not already halted
             else if let Some(pause_reason) = agent.check_pause_conditions(&metrics) {
-                warn!("PAUSE condition detected: {}", pause_reason);
+                warn!("⚠️ WARNING condition detected: {}", pause_reason);
 
                 // Emit warning signal (not a hard stop)
                 self.signal_router.emit_signal(
                     SignalType::MetricsWarning,
                     &self.run_id,
                     SignalPayload {
-                        step_from: self.state.step_number() as i32,
-                        step_to: self.state.step_number() as i32,
+                        step_from: current_step as i32,
+                        step_to: current_step as i32,
                         artifacts_produced: vec![],
                         metrics_snapshot: Some(serde_json::to_value(&metrics)?),
                         gate_required: false,
@@ -1301,10 +1581,10 @@ impl Orchestrator {
             // Store latest metrics
             self.latest_metrics = Some(metrics.clone());
 
-            Ok(Some(metrics))
+            Ok((Some(metrics), halt_triggered))
         } else {
             debug!("Governance agent not available - skipping metrics calculation");
-            Ok(None)
+            Ok((None, false))
         }
     }
 
@@ -1333,12 +1613,15 @@ impl Orchestrator {
 
     /// Execute Step 3: Multi-Angle Analysis
     ///
-    /// Performs six-lens analysis on the Charter by:
+    /// Performs six-lens analysis on the USER'S CONTENT by:
     /// - Applying six analytical lenses (Structural, Thematic, Logic, Evidence, Expression, Intent)
     /// - Using weighted lens sequencing based on intent category
     /// - Tracking lens efficacy for pattern learning
     /// - Creating Integrated_Diagnostic artifact
     /// - Emitting Ready_for_Synthesis signal
+    ///
+    /// CRITICAL: Analyzes the user's original content (from user_request), NOT the Charter.
+    /// The Charter is used only as governance context for Intent lens alignment.
     ///
     /// # Returns
     /// A tuple of (integrated_diagnostic_id, lens_efficacy_report_id)
@@ -1350,30 +1633,44 @@ impl Orchestrator {
             anyhow::bail!("Cannot execute Step 3 - current state: {:?}", self.state);
         }
 
-        // Ensure we have required artifacts from Step 1
+        // Ensure we have required artifacts from Steps 0 and 1
         let charter = self.charter.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No Charter available - Step 1 must be completed first"))?;
+
+        let intent_summary = self.intent_summary.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Intent Summary available - Step 0 must be completed first"))?;
 
         // Validate analysis_synthesis_agent is configured
         if self.analysis_synthesis_agent.is_none() {
             anyhow::bail!("Analysis & Synthesis Agent not configured");
         }
 
-        // Extract Charter content
-        let charter_content = self.extract_content_from_artifact(charter)?;
+        // CRITICAL FIX: Extract user's original content as analysis target
+        // Clone to avoid borrow checker issues with self mutations later
+        let analysis_target = intent_summary.user_request.clone();
 
-        // Get intent category from intent summary (clone to avoid borrow issues)
-        let intent_category = self.intent_summary.as_ref()
-            .map(|intent| intent.intent_category.clone())
-            .unwrap_or_else(|| "Analytical".to_string()); // Default to Analytical if not available
+        // Extract Charter content as governance context (for Intent lens only)
+        let governance_context = self.extract_content_from_artifact(charter)?;
+
+        // Validation: Ensure we're not analyzing the Charter itself
+        if analysis_target.contains("# Charter") || analysis_target.contains("## Objectives")
+            || analysis_target.len() == governance_context.len() {
+            warn!("HALT: Analysis target appears to be governance metadata, not user content!");
+            anyhow::bail!("Invalid analysis target - cannot analyze Charter as subject matter");
+        }
+
+        // Get intent category (clone to avoid borrow issues)
+        let intent_category = intent_summary.intent_category.clone();
 
         info!("Step 3: Performing six-lens analysis...");
         info!("  Intent category: {}", intent_category);
+        info!("  Analysis target size: {} chars", analysis_target.len());
+        info!("  Governance context size: {} chars", governance_context.len());
 
-        // Perform six-lens analysis (this takes ownership temporarily)
+        // Perform six-lens analysis with BOTH inputs
         let agent = self.analysis_synthesis_agent.as_mut().unwrap();
         let (integrated_diagnostic, lens_efficacy) = agent
-            .perform_six_lens_analysis(&charter_content, &intent_category)
+            .perform_six_lens_analysis(&analysis_target, &governance_context, &intent_category)
             .await?;
 
         let integrated_diagnostic_id = format!("{}-integrated-diagnostic", self.run_id);
@@ -1392,14 +1689,25 @@ impl Orchestrator {
 
         // Calculate metrics
         info!("Step 3: Calculating metrics...");
-        let metrics = self.calculate_metrics(&charter_content, &integrated_diagnostic).await?;
+        let (metrics, halt_triggered) = self.calculate_metrics(&analysis_target, &integrated_diagnostic).await?;
 
-        // Record Step 3 completion in ledger
+        // CRITICAL: If HALT was triggered, do NOT emit progression signal
+        if halt_triggered {
+            warn!("Step 3 HALTED - run is PAUSED, no gate signal emitted");
+            warn!("State: {:?}", self.state);
+            warn!("Human decision required to proceed");
+
+            // Return early - do not proceed to gate
+            return Ok((integrated_diagnostic_id, lens_efficacy_report_id));
+        }
+
+        // Record Step 3 completion in ledger (only if not halted)
         let payload = LedgerPayload {
             action: "step_3_complete".to_string(),
             inputs: Some(serde_json::json!({
                 "intent_category": intent_category,
-                "charter_size": charter_content.len(),
+                "analysis_target_size": analysis_target.len(),
+                "governance_context_size": governance_context.len(),
             })),
             outputs: Some(serde_json::json!({
                 "integrated_diagnostic_id": integrated_diagnostic_id,
@@ -1501,6 +1809,105 @@ impl Orchestrator {
             anyhow::bail!("Analysis & Synthesis Agent not configured");
         }
 
+        // CRITICAL: Pre-synthesis content relevance validation
+        info!("Step 4: Pre-synthesis relevance check...");
+
+        let integrated_diagnostic = self.integrated_diagnostic.as_ref().unwrap();
+        let charter = self.charter.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Charter available"))?;
+        let charter_content = self.extract_content_from_artifact(charter)?;
+
+        // Extract objectives from Charter for relevance checking
+        let charter_objectives = self.extract_objectives_from_charter(&charter_content)?;
+
+        // Check that analysis findings relate to Charter objectives
+        // This prevents synthesizing based on wrong analysis target (e.g., Charter itself)
+        let relevance_score = if let Some(ref governance_agent) = self.governance_agent {
+            governance_agent.check_synthesis_relevance(
+                integrated_diagnostic,
+                &charter_objectives
+            ).await?
+        } else {
+            warn!("Governance agent not available - skipping relevance check");
+            1.0 // Default to passing if no governance agent
+        };
+
+        // HALT if relevance is critically low
+        if relevance_score < 0.50 {
+            warn!("⚠️ PRE-SYNTHESIS RELEVANCE CHECK FAILED: {:.2}", relevance_score);
+
+            // Get current step for HALT signal
+            let current_step = match self.state {
+                RunState::Step4Active => 4,
+                _ => 4,
+            };
+
+            // Set state to Paused
+            self.state = RunState::Paused {
+                reason: format!(
+                    "Analysis findings do not appear to relate to Charter objectives. \
+                     Relevance score: {:.2}. Review Step 3 analysis target.",
+                    relevance_score
+                ),
+                step: current_step,
+                triggered_metrics: Some(serde_json::json!({
+                    "pre_synthesis_relevance": relevance_score,
+                    "threshold": 0.50
+                })),
+            };
+
+            // Emit HALT signal
+            self.signal_router.emit_signal(
+                SignalType::Halt,
+                &self.run_id,
+                SignalPayload {
+                    step_from: current_step as i32,
+                    step_to: current_step as i32,
+                    artifacts_produced: vec![],
+                    metrics_snapshot: Some(serde_json::json!({
+                        "pre_synthesis_relevance": relevance_score,
+                        "threshold": 0.50,
+                        "reason": "Analysis findings unrelated to Charter objectives"
+                    })),
+                    gate_required: false,
+                },
+            );
+
+            // Record in ledger
+            self.ledger.create_entry(
+                &self.run_id,
+                EntryType::Signal,
+                Some(current_step as i32),
+                Some("Conductor"),
+                LedgerPayload {
+                    action: "pre_synthesis_halt".to_string(),
+                    inputs: Some(serde_json::json!({
+                        "relevance_score": relevance_score,
+                        "threshold": 0.50
+                    })),
+                    outputs: None,
+                    rationale: Some(format!(
+                        "Pre-synthesis relevance check failed. Analysis findings appear unrelated to Charter objectives. \
+                         This typically indicates Step 3 analyzed the wrong content (e.g., Charter methodology instead of user's subject matter)."
+                    )),
+                },
+            );
+
+            warn!("Run PAUSED - human decision required");
+            warn!("State: {:?}", self.state);
+
+            // Return early - no synthesis artifacts created
+            anyhow::bail!("Pre-synthesis relevance check failed: score {:.2} below threshold 0.50", relevance_score);
+        }
+        // Warning if relevance is marginal
+        else if relevance_score < 0.70 {
+            warn!("⚠️ Pre-synthesis relevance is marginal: {:.2}", relevance_score);
+            warn!("Analysis findings may be partially off-target - review recommended");
+            // Emit warning but allow to proceed
+        } else {
+            info!("✓ Pre-synthesis relevance check passed: {:.2}", relevance_score);
+        }
+
         info!("Step 4: Performing synthesis lock-in...");
 
         // Perform Step 4 synthesis (agent already has integrated diagnostic from Step 3)
@@ -1546,9 +1953,19 @@ impl Orchestrator {
         let charter_content = self.extract_content_from_artifact(charter)?;
 
         // Use the north star narrative as the output for metrics
-        let metrics = self.calculate_metrics(&charter_content, &synthesis_result.north_star_narrative).await?;
+        let (metrics, halt_triggered) = self.calculate_metrics(&charter_content, &synthesis_result.north_star_narrative).await?;
 
-        // Record Step 4 completion in ledger
+        // CRITICAL: If HALT was triggered, do NOT emit progression signal
+        if halt_triggered {
+            warn!("Step 4 HALTED - run is PAUSED, no gate signal emitted");
+            warn!("State: {:?}", self.state);
+            warn!("Human decision required to proceed");
+
+            // Return early - do not proceed to gate
+            return Ok((core_thesis_id, north_star_narrative_id));
+        }
+
+        // Record Step 4 completion in ledger (only if not halted)
         let payload = LedgerPayload {
             action: "step_4_complete".to_string(),
             inputs: Some(serde_json::json!({
@@ -1699,9 +2116,19 @@ impl Orchestrator {
         let charter_content = self.extract_content_from_artifact(charter)?;
 
         // Use the framework architecture as the output for metrics
-        let metrics = self.calculate_metrics(&charter_content, &framework_architecture).await?;
+        let (metrics, halt_triggered) = self.calculate_metrics(&charter_content, &framework_architecture).await?;
 
-        // Record Step 5 completion in ledger
+        // CRITICAL: If HALT was triggered, do NOT emit progression signal
+        if halt_triggered {
+            warn!("Step 5 HALTED - run is PAUSED, no gate signal emitted");
+            warn!("State: {:?}", self.state);
+            warn!("Human decision required to proceed");
+
+            // Return early - do not proceed to gate
+            return Ok(framework_architecture_id);
+        }
+
+        // Record Step 5 completion in ledger (only if not halted)
         let payload = LedgerPayload {
             action: "step_5_complete".to_string(),
             inputs: Some(serde_json::json!({

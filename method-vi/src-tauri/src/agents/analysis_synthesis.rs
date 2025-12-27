@@ -91,16 +91,31 @@ impl AnalysisSynthesisAgent {
         })
     }
 
-    /// Apply all six lenses to the Charter content
+    /// Apply all six lenses to the USER'S CONTENT
     ///
     /// This is the main entry point for Step 3
+    ///
+    /// # Arguments
+    /// * `analysis_target` - The user's original content to analyze (from user_request)
+    /// * `governance_context` - The Charter (used ONLY for Intent lens alignment)
+    /// * `intent_category` - Category determining lens sequence
+    ///
+    /// CRITICAL: The first 5 lenses analyze analysis_target. Only Intent lens uses governance_context.
     pub async fn perform_six_lens_analysis(
         &mut self,
-        charter_content: &str,
+        analysis_target: &str,
+        governance_context: &str,
         intent_category: &str,
     ) -> Result<(String, LensEfficacyReport)> {
         info!("Starting six-lens analysis");
         info!("Intent category: {}", intent_category);
+        info!("Analysis target: {} chars", analysis_target.len());
+        info!("Governance context: {} chars", governance_context.len());
+
+        // Validation: Ensure we're not analyzing governance metadata
+        if analysis_target.contains("# Charter") || analysis_target.contains("## Objectives") {
+            anyhow::bail!("HALT: Cannot analyze Charter as subject matter content");
+        }
 
         // Apply lenses in weighted sequence based on intent category
         let lens_sequence = self.get_lens_sequence(intent_category);
@@ -109,27 +124,28 @@ impl AnalysisSynthesisAgent {
             match lens_name {
                 "Structural" => {
                     info!("Applying Structural lens...");
-                    self.structural_analysis = Some(self.apply_structural_lens(charter_content).await?);
+                    self.structural_analysis = Some(self.apply_structural_lens(analysis_target).await?);
                 }
                 "Thematic" => {
                     info!("Applying Thematic lens...");
-                    self.thematic_analysis = Some(self.apply_thematic_lens(charter_content).await?);
+                    self.thematic_analysis = Some(self.apply_thematic_lens(analysis_target).await?);
                 }
                 "Logic" => {
                     info!("Applying Logic lens...");
-                    self.logic_analysis = Some(self.apply_logic_lens(charter_content).await?);
+                    self.logic_analysis = Some(self.apply_logic_lens(analysis_target).await?);
                 }
                 "Evidence" => {
                     info!("Applying Evidence lens...");
-                    self.evidence_analysis = Some(self.apply_evidence_lens(charter_content).await?);
+                    self.evidence_analysis = Some(self.apply_evidence_lens(analysis_target).await?);
                 }
                 "Expression" => {
                     info!("Applying Expression lens...");
-                    self.expression_analysis = Some(self.apply_expression_lens(charter_content).await?);
+                    self.expression_analysis = Some(self.apply_expression_lens(analysis_target).await?);
                 }
                 "Intent" => {
                     info!("Applying Intent lens...");
-                    self.intent_analysis = Some(self.apply_intent_lens(charter_content).await?);
+                    // Intent lens uses BOTH: analysis findings + governance context for alignment
+                    self.intent_analysis = Some(self.apply_intent_lens(analysis_target, governance_context).await?);
                 }
                 _ => {}
             }
@@ -165,14 +181,17 @@ impl AnalysisSynthesisAgent {
     /// Apply Structural Lens - Organization, hierarchy, flow
     async fn apply_structural_lens(&self, content: &str) -> Result<LensResult> {
         let system_prompt = "You are applying the STRUCTURAL LENS in Method-VI Step 3 analysis.\n\
-            Focus on organization, hierarchy, and flow of the content.";
+            Focus on organization, hierarchy, and flow of the USER'S CONTENT.\n\
+            \n\
+            CRITICAL: You are analyzing the USER'S SUBJECT MATTER CONTENT, not governance documents.\n\
+            Never critique Method-VI methodology. Analyze the content the user asked you to examine.";
 
         let user_message = format!(
             r#"STRUCTURAL LENS ANALYSIS
 
 Focus: Organization, hierarchy, flow
 
-Content to analyze:
+USER'S CONTENT TO ANALYZE:
 {}
 
 Provide analysis covering:
@@ -235,14 +254,17 @@ Format your response as:
     /// Apply Thematic Lens - Core themes, recurring patterns
     async fn apply_thematic_lens(&self, content: &str) -> Result<LensResult> {
         let system_prompt = "You are applying the THEMATIC LENS in Method-VI Step 3 analysis.\n\
-            Focus on core themes and recurring patterns.";
+            Focus on core themes and recurring patterns in the USER'S CONTENT.\n\
+            \n\
+            CRITICAL: You are analyzing the USER'S SUBJECT MATTER CONTENT, not governance documents.\n\
+            Never critique Method-VI methodology. Analyze the content the user asked you to examine.";
 
         let user_message = format!(
             r#"THEMATIC LENS ANALYSIS
 
 Focus: Core themes, recurring patterns
 
-Content to analyze:
+USER'S CONTENT TO ANALYZE:
 {}
 
 Provide analysis covering:
@@ -302,14 +324,17 @@ Format your response as:
     /// Apply Logic Lens - Arguments, reasoning chains
     async fn apply_logic_lens(&self, content: &str) -> Result<LensResult> {
         let system_prompt = "You are applying the LOGIC LENS in Method-VI Step 3 analysis.\n\
-            Focus on arguments, reasoning chains, and logical validity.";
+            Focus on arguments, reasoning chains, and logical validity in the USER'S CONTENT.\n\
+            \n\
+            CRITICAL: You are analyzing the USER'S SUBJECT MATTER CONTENT, not governance documents.\n\
+            Never critique Method-VI methodology. Analyze the content the user asked you to examine.";
 
         let user_message = format!(
             r#"LOGIC LENS ANALYSIS
 
 Focus: Arguments, reasoning chains, logical validity
 
-Content to analyze:
+USER'S CONTENT TO ANALYZE:
 {}
 
 Provide analysis covering:
@@ -371,14 +396,17 @@ Format your response as:
     /// Apply Evidence Lens - Data, sources, substantiation
     async fn apply_evidence_lens(&self, content: &str) -> Result<LensResult> {
         let system_prompt = "You are applying the EVIDENCE LENS in Method-VI Step 3 analysis.\n\
-            Focus on data, sources, and substantiation of claims.";
+            Focus on data, sources, and substantiation of claims in the USER'S CONTENT.\n\
+            \n\
+            CRITICAL: You are analyzing the USER'S SUBJECT MATTER CONTENT, not governance documents.\n\
+            Never critique Method-VI methodology. Analyze the content the user asked you to examine.";
 
         let user_message = format!(
             r#"EVIDENCE LENS ANALYSIS
 
 Focus: Data, sources, substantiation
 
-Content to analyze:
+USER'S CONTENT TO ANALYZE:
 {}
 
 Provide analysis covering:
@@ -440,14 +468,17 @@ Format your response as:
     /// Apply Expression Lens - Tone, clarity, readability
     async fn apply_expression_lens(&self, content: &str) -> Result<LensResult> {
         let system_prompt = "You are applying the EXPRESSION LENS in Method-VI Step 3 analysis.\n\
-            Focus on tone, clarity, and readability.";
+            Focus on tone, clarity, and readability of the USER'S CONTENT.\n\
+            \n\
+            CRITICAL: You are analyzing the USER'S SUBJECT MATTER CONTENT, not governance documents.\n\
+            Never critique Method-VI methodology. Analyze the content the user asked you to examine.";
 
         let user_message = format!(
             r#"EXPRESSION LENS ANALYSIS
 
 Focus: Tone, clarity, readability
 
-Content to analyze:
+USER'S CONTENT TO ANALYZE:
 {}
 
 Provide analysis covering:
@@ -513,42 +544,63 @@ Format your response as:
     }
 
     /// Apply Intent Lens - Alignment to Charter
-    async fn apply_intent_lens(&self, content: &str) -> Result<LensResult> {
+    ///
+    /// CRITICAL: This lens analyzes the USER'S CONTENT and checks if findings align with Charter objectives.
+    /// It does NOT analyze the Charter itself.
+    async fn apply_intent_lens(&self, analysis_target: &str, governance_context: &str) -> Result<LensResult> {
         let system_prompt = "You are applying the INTENT LENS in Method-VI Step 3 analysis.\n\
-            Focus on alignment to Charter objectives.";
+            \n\
+            Your task:\n\
+            1. Analyze the USER'S CONTENT to understand what it contains\n\
+            2. Check if your analysis findings align with Charter objectives\n\
+            \n\
+            CRITICAL: You are analyzing the USER'S SUBJECT MATTER CONTENT.\n\
+            The Charter is ONLY used as a reference to check alignment - DO NOT analyze the Charter itself.\n\
+            Never critique Method-VI methodology.";
 
         let user_message = format!(
             r#"INTENT LENS ANALYSIS
 
-Focus: Alignment to Charter objectives
+Focus: Does the user's content align with Charter objectives?
 
-Content to analyze:
+USER'S CONTENT TO ANALYZE:
 {}
 
+---
+
+CHARTER (For Alignment Reference Only):
+{}
+
+---
+
 Provide analysis covering:
-1. Objective Alignment: Does content serve stated objectives?
-2. Scope Adherence: Does content stay within defined boundaries?
-3. Priority Alignment: Are high-priority objectives addressed appropriately?
-4. Intent Drift: Any deviation from original intent?
-5. Success Criteria Coverage: Are success criteria addressed?
-6. Alignment Strength: Overall assessment of intent alignment
+1. Content Understanding: What is the user's content about?
+2. Objective Alignment: Do findings from the user's content align with Charter objectives?
+3. Scope Adherence: Does the user's content stay within Charter boundaries?
+4. Priority Alignment: Are Charter priorities reflected in the user's content?
+5. Intent Drift: Any deviation from Charter intent in the user's content?
+6. Success Criteria Coverage: Does the user's content address Charter success criteria?
+7. Alignment Strength: Overall assessment of alignment
 
 Format your response as:
 
+**Content Understanding:**
+[Brief summary of what the user's content is about]
+
 **Objective Alignment:**
-[Your analysis]
+[Your analysis of how user's content aligns with Charter objectives]
 
 **Scope Adherence:**
-[Your assessment]
+[Does user's content stay within Charter boundaries?]
 
 **Priority Alignment:**
-[Your analysis]
+[Are Charter priorities reflected in user's content?]
 
 **Intent Drift:**
-[Any drift detected and description]
+[Any deviation from Charter intent in user's content]
 
 **Success Criteria Coverage:**
-[Your assessment]
+[Does user's content address Charter success criteria?]
 
 **Alignment Strength:**
 [Your overall assessment with score 0.0-1.0]
@@ -558,7 +610,7 @@ Format your response as:
 - [Finding 2]
 - [Finding 3]
 "#,
-            content
+            analysis_target, governance_context
         );
 
         let response = self.api_client
@@ -1443,9 +1495,10 @@ mod tests {
                  expression_result.key_findings.len(),
                  expression_result.efficacy_score);
 
-        // Test Intent Lens
+        // Test Intent Lens (needs both analysis target and governance context)
         println!("   Testing Intent Lens...");
-        let intent_result = agent.apply_intent_lens(TEST_CHARTER).await
+        let mock_governance = "# Charter\n\n## Objectives\n1. Build analytics dashboard\n2. Provide insights\n\n## Success Criteria\n- Performance < 2s\n- 95% uptime";
+        let intent_result = agent.apply_intent_lens(TEST_CHARTER, mock_governance).await
             .expect("Intent lens failed");
         assert!(!intent_result.analysis.is_empty(), "Intent analysis is empty");
         assert!(!intent_result.key_findings.is_empty(), "No intent findings");
@@ -1455,8 +1508,9 @@ mod tests {
 
         // 3. Verify agent stores results internally
         println!("3. Testing six-lens analysis workflow (with internal storage)...");
+        let mock_governance_full = "# Charter\n\n## Objectives\n1. Build real-time analytics dashboard\n2. Provide actionable insights\n3. Improve customer retention by 15%\n\n## Success Criteria\n- Dashboard loads in < 2 seconds\n- 95% uptime\n- User satisfaction > 4.0/5.0";
         let (integrated_diagnostic, lens_efficacy) = agent
-            .perform_six_lens_analysis(TEST_CHARTER, "Analytical")
+            .perform_six_lens_analysis(TEST_CHARTER, mock_governance_full, "Analytical")
             .await
             .expect("Six-lens analysis failed");
 

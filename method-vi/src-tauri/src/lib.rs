@@ -67,6 +67,7 @@ pub fn run() {
             commands::export_json,
             commands::approve_gate,
             commands::reject_gate,
+            commands::handle_halt_decision,
             commands::submit_clarifications,
         ])
         .run(tauri::generate_context!())

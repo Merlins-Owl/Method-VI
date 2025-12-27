@@ -1258,6 +1258,80 @@ Snapshots will be updated at each step completion.
         info!("Domain_Snapshots created: {}", artifact_id);
         Ok(artifact)
     }
+
+    /// Check synthesis relevance before Step 4 synthesis
+    ///
+    /// Validates that the integrated diagnostic from Step 3 actually relates to
+    /// the Charter objectives. This prevents synthesizing based on wrong analysis target
+    /// (e.g., analyzing Charter methodology instead of user's content).
+    ///
+    /// Returns a relevance score from 0.0 to 1.0:
+    /// - 1.0 = Findings directly address all objectives
+    /// - 0.7 = Findings mostly relevant with some tangential content
+    /// - 0.5 = Findings partially relevant
+    /// - 0.3 = Findings mostly unrelated
+    /// - 0.0 = Findings completely unrelated
+    pub async fn check_synthesis_relevance(
+        &self,
+        diagnostic: &str,
+        charter_objectives: &[String],
+    ) -> Result<f64> {
+        info!("Checking synthesis relevance...");
+
+        let system_prompt = "You are a quality assurance checker for Method-VI. \
+            Assess whether analysis findings relate to the stated objectives.";
+
+        let objectives_text = charter_objectives.join("\n- ");
+
+        let user_message = format!(
+            r#"RELEVANCE CHECK
+
+Charter Objectives:
+- {}
+
+Analysis Findings (from Integrated Diagnostic):
+{}
+
+Question: Do these analysis findings directly address or inform these objectives?
+
+Score from 0.0 to 1.0:
+- 1.0 = Findings directly address all objectives
+- 0.7 = Findings mostly relevant with some tangential content
+- 0.5 = Findings partially relevant
+- 0.3 = Findings mostly unrelated
+- 0.0 = Findings completely unrelated (e.g., analyzing methodology instead of content)
+
+WARNING SIGNS of wrong analysis target:
+- Findings critique "project management methodology" or "governance approach"
+- References to "category error", "sophistication paradox", "planning primacy"
+- Meta-analysis of the Charter document itself rather than user's content
+- Findings discuss Method-VI framework instead of user's subject matter
+
+Respond with ONLY a JSON object:
+{{"score": 0.XX, "rationale": "brief explanation"}}"#,
+            objectives_text,
+            &diagnostic[..diagnostic.len().min(3000)]  // Truncate if too long
+        );
+
+        let response = self.api_client
+            .call_claude(system_prompt, &user_message, None, Some(300))
+            .await?;
+
+        // Parse score from response using existing extract_json helper
+        let json = self.extract_json(&response)?;
+
+        let score = json["score"]
+            .as_f64()
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse relevance score from response"))?;
+
+        let rationale = json["rationale"]
+            .as_str()
+            .unwrap_or("No rationale provided");
+
+        info!("Synthesis relevance score: {:.2} - {}", score, rationale);
+
+        Ok(score)
+    }
 }
 
 #[cfg(test)]
