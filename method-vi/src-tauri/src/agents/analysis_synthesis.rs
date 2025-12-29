@@ -91,6 +91,24 @@ impl AnalysisSynthesisAgent {
         })
     }
 
+    // =============================================================================
+    // STEP 3: SIX-LENS ANALYSIS
+    // =============================================================================
+    //
+    // TODO(Phase 2): Lens Efficacy System
+    // ----------------------------------------------------------------------------
+    // Current state: Efficacy scores are placeholders (always 0.0)
+    //
+    // Phase 2 Pattern Learning requirements:
+    // 1. Track which lenses provide unique insights (not found by other lenses)
+    // 2. Measure downstream usage (what findings appear in synthesis)
+    // 3. Enable adaptive sequencing (run high-value lenses first)
+    // 4. Support cost optimization (skip low-value lenses for known patterns)
+    //
+    // Design options documented in: Method-VI_MVP_Fixes_and_Enhancements_Guide.md
+    // See FIX-007 for analysis of why previous heuristic was removed
+    // =============================================================================
+
     /// Apply all six lenses to the USER'S CONTENT
     ///
     /// This is the main entry point for Step 3
@@ -710,7 +728,13 @@ Format your response as a comprehensive Integrated Diagnostic Summary that will 
     }
 
     /// Calculate lens efficacy report for pattern learning
+    ///
+    /// NOTE: Efficacy scores are currently placeholders (0.0) pending Phase 2 implementation.
+    /// See TODO(Phase 2) comment at top of Step 3 section for details.
     fn calculate_lens_efficacy(&self) -> LensEfficacyReport {
+        // NOTE: All efficacy_score values in lens_results will be 0.0 (placeholder)
+        // This is intentional - see FIX-007 for why previous heuristic was removed
+
         // Collect all lens results
         let mut lens_results = Vec::new();
 
@@ -739,6 +763,7 @@ Format your response as a comprehensive Integrated Diagnostic Summary that will 
             .sum();
 
         // Count high-value lenses (efficacy > 0.7)
+        // NOTE: Will always be 0 until Phase 2 implements real efficacy calculation
         let high_value_combinations = lens_results.iter()
             .filter(|r| r.efficacy_score > 0.7)
             .count();
@@ -804,24 +829,28 @@ Format your response as a comprehensive Integrated Diagnostic Summary that will 
         findings
     }
 
-    /// Calculate efficacy score based on findings quality
-    fn calculate_efficacy_score(&self, key_findings: &[String], full_response: &str) -> f64 {
-        // Simple heuristic for efficacy:
-        // - Number of findings (more = better, up to a point)
-        // - Length of analysis (more detail = better)
-        // - Presence of specific insights (not generic)
-
-        let finding_count_score = (key_findings.len() as f64 * 0.2).min(0.6);
-        let length_score = (full_response.len() as f64 / 1000.0 * 0.2).min(0.3);
-        let specificity_score = if full_response.contains("specific") ||
-                                    full_response.contains("particular") ||
-                                    full_response.contains("notably") {
-            0.1
-        } else {
-            0.0
-        };
-
-        (finding_count_score + length_score + specificity_score).min(1.0).max(0.1)
+    /// Calculate lens efficacy score
+    ///
+    /// TODO(Phase 2 - Pattern Learning): Implement meaningful efficacy calculation
+    ///
+    /// Current implementation returns placeholder value. Phase 2 should implement:
+    /// - Option A: Uniqueness check (findings not duplicated across lenses)
+    /// - Option B: Synthesis citation tracking (what gets used downstream)
+    /// - Option C: User feedback integration
+    /// - Option D: LLM-based quality assessment with stricter criteria
+    ///
+    /// Previous heuristic (removed in FIX-007) always returned ~100% because:
+    /// - LLMs always produce 3+ findings (0.6 score)
+    /// - LLMs always produce 1500+ char responses (0.3 score)
+    /// - Common words "specific"/"particular"/"notably" (0.1 score)
+    /// Result: No discrimination between valuable and low-value insights
+    ///
+    /// See: Method-VI_MVP_Fixes_and_Enhancements_Guide.md, FIX-007 for design discussion
+    fn calculate_efficacy_score(&self, _key_findings: &[String], _full_response: &str) -> f64 {
+        // PLACEHOLDER: Return sentinel value indicating "not yet implemented"
+        // Using 0.0 rather than 1.0 to make it obvious this is placeholder data
+        // Phase 2 will replace this with meaningful calculation
+        0.0
     }
 
     // ==================== STEP 4: SYNTHESIS LOCK-IN ====================
