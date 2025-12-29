@@ -2254,7 +2254,7 @@ impl Orchestrator {
 
         // Call Validation & Learning Agent
         let agent = self.validation_agent.as_mut().unwrap();
-        let validation_result = agent
+        let mut validation_result = agent
             .validate_framework(
                 &self.run_id,
                 framework_content,
@@ -2267,6 +2267,24 @@ impl Orchestrator {
             .await?;
 
         info!("✓ Validation complete");
+
+        // FIX-005: Override EFI with consistent governance calculation
+        // The validation agent's evidence_audit uses weak regex parsing and can produce
+        // false positives. Use the same strict JSON-based calculation as Steps 2-5.
+        info!("Calculating EFI using consistent governance method...");
+        let governance_metrics = self.governance_agent.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Governance agent not available"))?
+            .calculate_metrics(framework_content, &charter_objectives_content, 6)
+            .await?;
+
+        let governance_efi = governance_metrics.efi.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("EFI not calculated in governance metrics"))?;
+
+        let original_efi = validation_result.critical_6_scores.efi;
+        validation_result.critical_6_scores.efi = governance_efi.value / 100.0; // Convert percentage to 0.0-1.0
+
+        info!("EFI corrected: {:.2} (validation audit) → {:.2} (governance strict)",
+            original_efi, validation_result.critical_6_scores.efi);
 
         // Store validation artifacts
         self.validation_matrix = Some(validation_result.validation_matrix.clone());
