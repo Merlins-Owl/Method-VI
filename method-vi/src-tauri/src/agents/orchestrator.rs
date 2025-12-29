@@ -1965,7 +1965,80 @@ impl Orchestrator {
             return Ok((core_thesis_id, north_star_narrative_id));
         }
 
-        // Record Step 4 completion in ledger (only if not halted)
+        // FIX-006: Re-synthesis pause check (Warning status on IAS)
+        // If IAS is in Warning range (0.50-0.79), pause for human review
+        if let Some(ref metrics_value) = metrics {
+            if let Some(ref ias) = metrics_value.ias {
+                if ias.status == crate::agents::governance_telemetry::MetricStatus::Warning {
+                    warn!("⚠️ Step 4 Re-Synthesis Pause: IAS at {:.2} (below 0.80 target)", ias.value);
+
+                    let current_step = 4;
+
+                    // Set state to Paused
+                    self.state = RunState::Paused {
+                        reason: format!(
+                            "Re-synthesis Pause: Intent Alignment at {:.1}% (target ≥80%). \
+                             The synthesized model may not fully align with Charter objectives. \
+                             Review the North Star Narrative before proceeding to framework design.",
+                            ias.value * 100.0
+                        ),
+                        step: current_step,
+                        triggered_metrics: Some(serde_json::json!({
+                            "ias": ias.value,
+                            "ias_threshold_warning": 0.70,
+                            "ias_threshold_pass": 0.80,
+                            "check_type": "re_synthesis_pause"
+                        })),
+                    };
+
+                    // Emit MetricsWarning signal (not HALT - softer signal)
+                    info!("Emitting MetricsWarning signal for re-synthesis pause");
+                    self.signal_router.emit_signal(
+                        SignalType::MetricsWarning,
+                        &self.run_id,
+                        SignalPayload {
+                            step_from: current_step as i32,
+                            step_to: current_step as i32,
+                            artifacts_produced: vec![
+                                core_thesis_id.clone(),
+                                north_star_narrative_id.clone(),
+                            ],
+                            metrics_snapshot: Some(serde_json::to_value(&metrics_value)?),
+                            gate_required: false, // Not a gate - just a pause for review
+                        },
+                    );
+
+                    // Record pause in ledger
+                    self.ledger.create_entry(
+                        &self.run_id,
+                        EntryType::Signal,
+                        Some(current_step as i32),
+                        Some("Conductor"),
+                        LedgerPayload {
+                            action: "re_synthesis_pause".to_string(),
+                            inputs: Some(serde_json::json!({
+                                "ias_value": ias.value,
+                                "ias_status": "Warning",
+                            })),
+                            outputs: None,
+                            rationale: Some(format!(
+                                "Re-synthesis pause triggered. IAS at {:.1}% (Warning range: 50-79%). \
+                                 Synthesis output may need review before proceeding to framework design.",
+                                ias.value * 100.0
+                            )),
+                        },
+                    );
+
+                    warn!("Run PAUSED for re-synthesis review - human decision required");
+                    warn!("State: {:?}", self.state);
+
+                    // Return early - do not proceed to gate
+                    return Ok((core_thesis_id, north_star_narrative_id));
+                }
+            }
+        }
+
+        // Record Step 4 completion in ledger (only if not halted or paused)
         let payload = LedgerPayload {
             action: "step_4_complete".to_string(),
             inputs: Some(serde_json::json!({
