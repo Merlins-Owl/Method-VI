@@ -1689,7 +1689,7 @@ impl Orchestrator {
 
         // Calculate metrics
         info!("Step 3: Calculating metrics...");
-        let (metrics, halt_triggered) = self.calculate_metrics(&analysis_target, &integrated_diagnostic).await?;
+        let (metrics, halt_triggered) = self.calculate_metrics(&analysis_target, &governance_context).await?;
 
         // CRITICAL: If HALT was triggered, do NOT emit progression signal
         if halt_triggered {
@@ -1953,7 +1953,7 @@ impl Orchestrator {
         let charter_content = self.extract_content_from_artifact(charter)?;
 
         // Use the north star narrative as the output for metrics
-        let (metrics, halt_triggered) = self.calculate_metrics(&charter_content, &synthesis_result.north_star_narrative).await?;
+        let (metrics, halt_triggered) = self.calculate_metrics(&synthesis_result.north_star_narrative, &charter_content).await?;
 
         // CRITICAL: If HALT was triggered, do NOT emit progression signal
         if halt_triggered {
@@ -2116,7 +2116,7 @@ impl Orchestrator {
         let charter_content = self.extract_content_from_artifact(charter)?;
 
         // Use the framework architecture as the output for metrics
-        let (metrics, halt_triggered) = self.calculate_metrics(&charter_content, &framework_architecture).await?;
+        let (metrics, halt_triggered) = self.calculate_metrics(&framework_architecture, &charter_content).await?;
 
         // CRITICAL: If HALT was triggered, do NOT emit progression signal
         if halt_triggered {
