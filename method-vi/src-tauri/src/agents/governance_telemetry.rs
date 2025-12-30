@@ -650,30 +650,43 @@ impl GovernanceTelemetryAgent {
     ///
     /// # Arguments
     /// * `metrics` - The metrics to check
-    /// * `step` - Current step (0-6) - EFI only enforced at Step 6 per spec §9.1.4
+    /// * `step` - Current step (0-6) - Metrics are only evaluated at specific steps per spec §9.1
+    ///
+    /// # Step-Specific Evaluation (per spec §9.1):
+    /// - CI:  Steps 1, 2, 3, 4, 5, 6 (all steps)
+    /// - EV:  Steps 2, 3, 4, 5
+    /// - IAS: Steps 1, 2, 3, 4, 5, 6 (all steps)
+    /// - EFI: Step 6 ONLY
+    /// - SEC: Steps 1, 6 only
+    /// - PCI: Steps 5, 6 ONLY
     pub fn check_halt_conditions(&self, metrics: &CriticalMetrics, step: u8) -> Option<String> {
         let mut halt_reasons = Vec::new();
 
+        // CI - evaluated at all steps (1-6)
         if let Some(ref ci) = metrics.ci {
             if ci.status == MetricStatus::Fail {
                 halt_reasons.push(format!("CI critically low: {:.2}", ci.value));
             }
         }
 
-        if let Some(ref ev) = metrics.ev {
-            if ev.status == MetricStatus::Fail {
-                halt_reasons.push(format!("EV exceeded limits: {:.1}%", ev.value));
+        // EV - evaluated at Steps 2-5 only
+        if step >= 2 && step <= 5 {
+            if let Some(ref ev) = metrics.ev {
+                if ev.status == MetricStatus::Fail {
+                    halt_reasons.push(format!("EV outside tolerance: {:.1}%", ev.value));
+                }
             }
         }
 
+        // IAS - evaluated at all steps (1-6)
         if let Some(ref ias) = metrics.ias {
             if ias.status == MetricStatus::Fail {
                 halt_reasons.push(format!("IAS critically low: {:.2}", ias.value));
             }
         }
 
-        // FIX-008: EFI should only trigger HALT at Step 6 (per spec §9.1.4)
-        // Early steps (0-5) may have low EFI (e.g., Charter is governance, not evidence)
+        // EFI - evaluated at Step 6 ONLY
+        // FIX-008/FIX-009: Early steps (0-5) may have low EFI (e.g., Charter is governance, not evidence)
         // but this shouldn't block progression before validation
         if step == 6 {
             if let Some(ref efi) = metrics.efi {
@@ -683,9 +696,21 @@ impl GovernanceTelemetryAgent {
             }
         }
 
-        if let Some(ref pci) = metrics.pci {
-            if pci.status == MetricStatus::Fail {
-                halt_reasons.push(format!("PCI critically low: {:.2}", pci.value));
+        // SEC - evaluated at Steps 1 and 6 only
+        if step == 1 || step == 6 {
+            if let Some(ref sec) = metrics.sec {
+                if sec.status == MetricStatus::Fail {
+                    halt_reasons.push(format!("SEC violation: {:.1}%", sec.value));
+                }
+            }
+        }
+
+        // PCI - evaluated at Steps 5 and 6 ONLY
+        if step >= 5 {
+            if let Some(ref pci) = metrics.pci {
+                if pci.status == MetricStatus::Fail {
+                    halt_reasons.push(format!("PCI critically low: {:.2}", pci.value));
+                }
             }
         }
 
