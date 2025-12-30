@@ -647,7 +647,11 @@ impl GovernanceTelemetryAgent {
     }
 
     /// Check if any metrics require HALT
-    pub fn check_halt_conditions(&self, metrics: &CriticalMetrics) -> Option<String> {
+    ///
+    /// # Arguments
+    /// * `metrics` - The metrics to check
+    /// * `step` - Current step (0-6) - EFI only enforced at Step 6 per spec §9.1.4
+    pub fn check_halt_conditions(&self, metrics: &CriticalMetrics, step: u8) -> Option<String> {
         let mut halt_reasons = Vec::new();
 
         if let Some(ref ci) = metrics.ci {
@@ -668,9 +672,14 @@ impl GovernanceTelemetryAgent {
             }
         }
 
-        if let Some(ref efi) = metrics.efi {
-            if efi.status == MetricStatus::Fail {
-                halt_reasons.push(format!("EFI critically low: {:.1}%", efi.value));
+        // FIX-008: EFI should only trigger HALT at Step 6 (per spec §9.1.4)
+        // Early steps (0-5) may have low EFI (e.g., Charter is governance, not evidence)
+        // but this shouldn't block progression before validation
+        if step == 6 {
+            if let Some(ref efi) = metrics.efi {
+                if efi.status == MetricStatus::Fail {
+                    halt_reasons.push(format!("EFI critically low: {:.1}%", efi.value));
+                }
             }
         }
 

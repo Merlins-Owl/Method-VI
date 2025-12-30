@@ -1512,8 +1512,8 @@ impl Orchestrator {
             let current_step = self.state.step_number();
             let mut halt_triggered = false;
 
-            // Check for HALT conditions
-            if let Some(halt_reason) = agent.check_halt_conditions(&metrics) {
+            // Check for HALT conditions (EFI only enforced at Step 6)
+            if let Some(halt_reason) = agent.check_halt_conditions(&metrics, current_step) {
                 warn!("⚠️ HALT CONDITION DETECTED: {}", halt_reason);
                 halt_triggered = true;
 

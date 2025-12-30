@@ -48,7 +48,14 @@
       "Bash(ANTHROPIC_API_KEY=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 npm run tauri:*)",
       "Bash(grep:*)",
       "Bash(timeout /t 10 /nobreak)",
-      "Bash(cmd /c \"set ANTHROPIC_API_KEY=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 && npm run tauri dev\")"
+      "Bash(cmd /c \"set ANTHROPIC_API_KEY=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 && npm run tauri dev\")",
+      "Bash(dir \"%APPDATA%\\\\com.method-vi.app\")",
+      "Bash(dir \"%APPDATA%\\\\com.ryanb.method-vi\")",
+      "Bash(then echo \"✓ API key found in environment \\(length: $#ANTHROPIC_API_KEY\\)\")",
+      "Bash(else echo \"✗ API key NOT found in environment\")",
+      "Bash(git checkout:*)",
+      "Bash(or data.\" This false positive gave false confidence in content quality\nand allowed validation to pass when it shouldn''t.\n\nROOT CAUSE:\nSteps 2-5 and Step 6 used DIFFERENT EFI calculation methods:\n\nSteps 2-5 \\(governance_telemetry.rs:416-487\\):\n  - Strict JSON prompt with required fields\n  - Counts claims vs. evidence precisely\n  - Returns structured MetricResult with percentage\n\nStep 6 \\(validation_learning.rs:423-478\\):\n  - Vague free-form prompt asking about \"substantiation\"\n  - LLM could interpret structure/logic as \"evidence\"\n  - Weak regex parsing: extracts ANY 0.0-1.0 number after \"score\"\n  - Defaults to 0.7 \\(70%\\) if parsing fails\n  - Passes steno_ledger causing confusion \\(evaluates entire run, not framework\\)\n\nThe Step 6 method had multiple failure modes:\n1. \"Evidence\" definition too loose \\(logic = evidence?\\)\n2. Regex could grab wrong score from response\n3. Steno-ledger context muddied the evaluation\n\nFIX:\nApplied Option A \\(Consistent\\): Make Step 6 use the same strict\ngovernance_telemetry EFI calculation as Steps 2-5.\n\nChanges \\(orchestrator.rs:2257, 2271-2287\\):\n1. Made validation_result mutable\n2. After validation completes, calculate EFI using governance method:\n   - Call governance_agent.calculate_metrics\\(framework, charter, 6\\)\n   - Extract EFI from result\n3. Override validation_result.critical_6_scores.efi with correct value\n4. Log the correction for transparency\n\nThe validation agent''s audit_evidence\\(\\) is kept for its narrative\nevidence report, but its score is no longer used for the EFI metric.\n\nIMPACT:\n- EFI now calculated identically at all steps \\(2-6\\)\n- No more false positives from loose definitions\n- Consistent strict JSON-based evidence counting\n- HALT conditions will trigger on genuine lack of evidence\n\nSIMILAR TO:\nFIX-004 \\(IAS parameter inversion\\) - both fixes ensure metric consistency\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(find:*)"
     ]
   }
 }

@@ -358,7 +358,8 @@ All proposed work remains within defined scope boundaries.
 
     // Check HALT/PAUSE conditions
     println!("\n4. Checking HALT/PAUSE conditions...");
-    if let Some(halt_reason) = agent.check_halt_conditions(&metrics) {
+    let test_step = 6; // Use Step 6 to test all metrics including EFI
+    if let Some(halt_reason) = agent.check_halt_conditions(&metrics, test_step) {
         println!("   🛑 HALT TRIGGERED: {}", halt_reason);
     } else if let Some(pause_reason) = agent.check_pause_conditions(&metrics) {
         println!("   ⏸️  PAUSE RECOMMENDED: {}", pause_reason);
