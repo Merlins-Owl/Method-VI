@@ -981,8 +981,8 @@ impl Orchestrator {
 
         // Step 1c: Calculate and lock E_baseline
         info!("Step 1c: Calculating and locking E_baseline...");
-        let e_baseline = self.calculate_and_lock_e_baseline(&charter_content)?;
-        info!("✓ E_baseline locked: {} words", e_baseline);
+        let e_baseline = self.calculate_and_lock_e_baseline(&charter_content).await?;
+        info!("✓ E_baseline locked: {:.2} entropy", e_baseline);
 
         // Step 1d: Create Baseline_Report
         info!("Step 1d: Creating Baseline_Report...");
@@ -1591,9 +1591,9 @@ impl Orchestrator {
     /// Calculate and lock E_baseline (Step 1)
     ///
     /// This should be called after the Baseline Report is generated.
-    pub fn calculate_and_lock_e_baseline(&mut self, baseline_content: &str) -> Result<f64> {
+    pub async fn calculate_and_lock_e_baseline(&mut self, baseline_content: &str) -> Result<f64> {
         if let Some(ref mut agent) = self.governance_agent {
-            let baseline = agent.calculate_e_baseline(baseline_content, 1)?;
+            let baseline = agent.calculate_e_baseline(baseline_content, 1).await?;
             agent.lock_e_baseline(1)?;
             info!("E_baseline calculated and locked: {}", baseline);
             Ok(baseline)

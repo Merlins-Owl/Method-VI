@@ -149,31 +149,38 @@ impl GovernanceTelemetryAgent {
         })
     }
 
+    /// Get the threshold configuration (for testing)
+    pub fn get_thresholds(&self) -> &ThresholdsConfig {
+        &self.thresholds
+    }
+
     /// Calculate E_baseline from Baseline Report (Step 1)
     ///
-    /// This calculates the baseline content size that will be used
-    /// for EV (Expansion Variance) calculations throughout the run.
-    pub fn calculate_e_baseline(&mut self, baseline_content: &str, step: u8) -> Result<f64> {
+    /// Per spec §9.1.2, E_baseline measures entropy:
+    /// E = (Unique_Concepts + Defined_Relationships + Decision_Points) / Content_Units
+    ///
+    /// This calculates the baseline entropy that will be used for EV (Expansion Variance)
+    /// calculations throughout the run.
+    pub async fn calculate_e_baseline(&mut self, baseline_content: &str, _step: u8) -> Result<f64> {
         if self.e_baseline.is_some() && self.e_baseline.as_ref().unwrap().locked {
             return Err(anyhow::anyhow!("E_baseline is already locked and cannot be recalculated"));
         }
 
-        // Simple calculation: word count (can be enhanced later)
-        let word_count = baseline_content
-            .split_whitespace()
-            .filter(|w| !w.is_empty())
-            .count() as f64;
+        info!("Calculating E_baseline entropy from baseline content...");
 
-        info!("Calculated E_baseline: {} words from baseline content", word_count);
+        // Calculate entropy using the standard formula
+        let entropy = self.calculate_entropy(baseline_content).await?;
+
+        info!("E_baseline entropy calculated: {:.2}", entropy);
 
         self.e_baseline = Some(EBaseline {
-            value: word_count,
+            value: entropy,
             locked: false,
             locked_at_step: None,
             source: "Baseline Report".to_string(),
         });
 
-        Ok(word_count)
+        Ok(entropy)
     }
 
     /// Lock E_baseline (Step 1 completion)
@@ -211,7 +218,7 @@ impl GovernanceTelemetryAgent {
 
         // Calculate each metric
         let ci = self.calculate_ci(content).await?;
-        let ev = self.calculate_ev(content)?;
+        let ev = self.calculate_ev(content).await?;
         let ias = self.calculate_ias(content, charter_objectives).await?;
         let efi = self.calculate_efi(content, step).await?;
         let sec = self.calculate_sec()?;
@@ -290,17 +297,74 @@ impl GovernanceTelemetryAgent {
         })
     }
 
+    /// Calculate entropy for content using LLM analysis
+    ///
+    /// Per spec §9.1.2:
+    /// E = (Unique_Concepts + Defined_Relationships + Decision_Points) / Content_Units
+    async fn calculate_entropy(&self, content: &str) -> Result<f64> {
+        let system_prompt = "You are an entropy analysis expert for Method-VI governance. \
+            Analyze content to identify unique concepts, defined relationships, and decision points. \
+            Return ONLY a JSON object with this exact structure: \
+            {\"unique_concepts\": <number>, \"relationships\": <number>, \"decision_points\": <number>, \"content_units\": <number>}";
+
+        let user_message = format!(
+            r#"Analyze this content for entropy calculation:
+
+{}
+
+Extract:
+1. unique_concepts: Count of distinct concepts, entities, or ideas introduced
+2. relationships: Count of defined relationships between concepts (dependencies, hierarchies, flows)
+3. decision_points: Count of places requiring decisions, choices, or branching logic
+4. content_units: Total semantic units (paragraphs, sections, or logical blocks)
+
+Return JSON with counts."#,
+            content
+        );
+
+        let response = self.api_client
+            .call_claude(system_prompt, &user_message, None, Some(1024))
+            .await?;
+
+        // Parse JSON response - extract JSON if embedded in text
+        let entropy_data: serde_json::Value = self.extract_json(&response)
+            .context(format!("Failed to parse entropy analysis as JSON. Raw response: {}", &response[..response.len().min(200)]))?;
+
+        let unique_concepts = entropy_data["unique_concepts"]
+            .as_f64()
+            .ok_or_else(|| anyhow::anyhow!("Missing unique_concepts in response"))?;
+
+        let relationships = entropy_data["relationships"]
+            .as_f64()
+            .ok_or_else(|| anyhow::anyhow!("Missing relationships in response"))?;
+
+        let decision_points = entropy_data["decision_points"]
+            .as_f64()
+            .ok_or_else(|| anyhow::anyhow!("Missing decision_points in response"))?;
+
+        let content_units = entropy_data["content_units"]
+            .as_f64()
+            .ok_or_else(|| anyhow::anyhow!("Missing content_units in response"))?;
+
+        // Calculate entropy: E = (Unique_Concepts + Defined_Relationships + Decision_Points) / Content_Units
+        let entropy = if content_units > 0.0 {
+            (unique_concepts + relationships + decision_points) / content_units
+        } else {
+            0.0
+        };
+
+        Ok(entropy)
+    }
+
     /// Calculate EV (Expansion Variance)
     ///
-    /// Compares current content size to E_baseline.
-    /// Formula: |E_current - E_baseline| / E_baseline × 100
-    fn calculate_ev(&self, content: &str) -> Result<MetricResult> {
+    /// Per spec §9.1.2, measures entropy variance from baseline:
+    /// EV = ((E_current - E_baseline) / E_baseline) × 100%
+    async fn calculate_ev(&self, content: &str) -> Result<MetricResult> {
         debug!("Calculating EV (Expansion Variance)");
 
-        let e_current = content
-            .split_whitespace()
-            .filter(|w| !w.is_empty())
-            .count() as f64;
+        // Calculate current entropy using same formula as E_baseline
+        let e_current = self.calculate_entropy(content).await?;
 
         let e_baseline = self.e_baseline
             .as_ref()
@@ -330,18 +394,18 @@ impl GovernanceTelemetryAgent {
                 },
             ],
             calculation_method: format!(
-                "|E_current - E_baseline| / E_baseline × 100 = |{} - {}| / {} × 100 = {:.2}%",
+                "|E_current - E_baseline| / E_baseline × 100 = |{:.2} - {:.2}| / {:.2} × 100 = {:.2}%",
                 e_current, e_baseline, e_baseline, variance
             ),
             interpretation: format!(
-                "Content has {}% variance from baseline ({}±10% is target). Current: {} words, Baseline: {} words.",
-                variance.round(),
+                "Content has {:.1}% entropy variance from baseline ({}±10% is target). Current: {:.2}, Baseline: {:.2}.",
+                variance,
                 if variance < 10.0 { "PASS" } else if variance < 20.0 { "WARNING" } else { "FAIL" },
-                e_current.round(),
-                e_baseline.round()
+                e_current,
+                e_baseline
             ),
             recommendation: if status != MetricStatus::Pass {
-                Some("Content size deviates significantly from baseline. Review scope creep or compression.".to_string())
+                Some("Entropy deviates significantly from baseline. Review scope creep or over-compression.".to_string())
             } else {
                 None
             },
@@ -611,7 +675,7 @@ impl GovernanceTelemetryAgent {
     /// * `value` - The metric value
     /// * `threshold` - The threshold configuration
     /// * `inverse_scale` - If true, lower values are better (like EV)
-    fn evaluate_status(
+    pub fn evaluate_status(
         &self,
         value: f64,
         threshold: &MetricThreshold,
@@ -687,8 +751,9 @@ impl GovernanceTelemetryAgent {
             }
         }
 
-        // EV - evaluated at Steps 2-5 only
-        if step >= 2 && step <= 5 {
+        // EV - checked at Steps 2 and 5 only - Steps 3-4 have expected size variance
+        // (analysis expands during diagnostic, synthesis condenses for model)
+        if step == 2 || step == 5 {
             if let Some(ref ev) = metrics.ev {
                 if ev.status == MetricStatus::Fail {
                     halt_reasons.push(format!("EV outside tolerance: {:.1}%", ev.value));
