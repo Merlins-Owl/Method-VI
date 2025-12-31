@@ -126,7 +126,7 @@ impl Default for ThresholdsConfig {
             sec: MetricThreshold {
                 pass: 100.0,
                 warning: None,
-                halt: None,
+                halt: Some(100.0),  // Any value < 100% should HALT (scope violation)
             },
             pci: MetricThreshold {
                 pass: 0.90,
