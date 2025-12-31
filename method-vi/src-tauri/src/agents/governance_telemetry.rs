@@ -356,6 +356,30 @@ Return JSON with counts."#,
         Ok(entropy)
     }
 
+    // =============================================================================
+    // EV (Entropy Variance) - PHASE 2 IMPLEMENTATION REQUIRED
+    // =============================================================================
+    //
+    // Current Status: Calculated for display only, does NOT trigger HALT
+    //
+    // MVP Limitation:
+    // - Uses word count comparison (incorrect)
+    // - Causes false HALTs because content size naturally varies by step
+    //
+    // Phase 2 Requirements:
+    // 1. Implement proper entropy formula per spec §9.1.2:
+    //    E = (Unique_Concepts + Defined_Relationships + Decision_Points) / Content_Units
+    // 2. Use LLM-based estimation to count concepts, relationships, decision points
+    // 3. Calibrate thresholds with real run data
+    // 4. Consider step-specific expected variance ranges:
+    //    - Step 2 (Charter): Should match input entropy closely
+    //    - Step 3 (Analysis): Entropy typically increases (more concepts introduced)
+    //    - Step 4 (Synthesis): Entropy may decrease (concepts consolidated)
+    //    - Step 5 (Framework): Entropy typically increases (detailed implementation)
+    // 5. Re-enable HALT checks once properly calibrated
+    //
+    // =============================================================================
+
     /// Calculate EV (Expansion Variance)
     ///
     /// Per spec §9.1.2, measures entropy variance from baseline:
@@ -751,15 +775,20 @@ Return JSON with counts."#,
             }
         }
 
-        // EV - checked at Steps 2 and 5 only - Steps 3-4 have expected size variance
-        // (analysis expands during diagnostic, synthesis condenses for model)
-        if step == 2 || step == 5 {
-            if let Some(ref ev) = metrics.ev {
-                if ev.status == MetricStatus::Fail {
-                    halt_reasons.push(format!("EV outside tolerance: {:.1}%", ev.value));
-                }
-            }
-        }
+        // TODO(Phase 2): Re-enable EV check with proper entropy calculation
+        // EV is disabled for MVP because:
+        // - Current implementation uses word count, not entropy per spec §9.1.2
+        // - Word count variance is expected across steps (analysis expands, synthesis condenses)
+        // - Proper formula: E = (Unique_Concepts + Defined_Relationships + Decision_Points) / Content_Units
+        // - Requires LLM-based entropy estimation and calibration data
+        //
+        // if step == 2 || step == 5 {
+        //     if let Some(ref ev) = metrics.ev {
+        //         if ev.status == MetricStatus::Fail {
+        //             halt_reasons.push(format!("EV outside tolerance: {:.1}%", ev.value));
+        //         }
+        //     }
+        // }
 
         // IAS - evaluated at all steps (1-6)
         if let Some(ref ias) = metrics.ias {
