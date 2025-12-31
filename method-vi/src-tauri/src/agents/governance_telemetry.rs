@@ -621,27 +621,45 @@ impl GovernanceTelemetryAgent {
             // Lower is better (e.g., EV)
             if value <= threshold.pass {
                 MetricStatus::Pass
-            } else if let Some(warning) = threshold.warning {
-                if value <= warning {
-                    MetricStatus::Warning
+            } else if let Some(halt) = threshold.halt {
+                if value > halt {
+                    MetricStatus::Fail  // Only Fail if above HALT threshold (for inverse)
                 } else {
-                    MetricStatus::Fail
+                    MetricStatus::Warning  // Between pass and halt = warning
                 }
             } else {
-                MetricStatus::Fail
+                // No halt threshold defined, use warning logic
+                if let Some(warn) = threshold.warning {
+                    if value <= warn {
+                        MetricStatus::Warning
+                    } else {
+                        MetricStatus::Fail
+                    }
+                } else {
+                    MetricStatus::Warning
+                }
             }
         } else {
             // Higher is better (e.g., CI, IAS, EFI, PCI)
             if value >= threshold.pass {
                 MetricStatus::Pass
-            } else if let Some(warning) = threshold.warning {
-                if value >= warning {
-                    MetricStatus::Warning
+            } else if let Some(halt) = threshold.halt {
+                if value < halt {
+                    MetricStatus::Fail  // Only Fail if below HALT threshold
                 } else {
-                    MetricStatus::Fail
+                    MetricStatus::Warning  // Between halt and pass = warning
                 }
             } else {
-                MetricStatus::Fail
+                // No halt threshold defined, use warning logic
+                if let Some(warn) = threshold.warning {
+                    if value >= warn {
+                        MetricStatus::Warning
+                    } else {
+                        MetricStatus::Fail
+                    }
+                } else {
+                    MetricStatus::Warning
+                }
             }
         }
     }
