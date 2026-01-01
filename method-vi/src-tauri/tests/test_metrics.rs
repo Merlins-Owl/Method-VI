@@ -53,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Calculate and lock E_baseline
     println!("2. Calculating E_baseline from baseline content...");
-    let e_baseline = agent.calculate_e_baseline(baseline_content, 1)?;
+    let e_baseline = agent.calculate_e_baseline(baseline_content, 1).await?;
     println!("   E_baseline: {} words", e_baseline);
 
     agent.lock_e_baseline(1)?;
@@ -248,12 +248,12 @@ All proposed work remains within defined scope boundaries.
         assert!(!ias.interpretation.is_empty(), "IAS missing interpretation");
     }
 
-    // EFI - Execution Fidelity Index
+    // EFI - Evidence Fidelity Index (FIX-025: Changed to 0.0-1.0 scale)
     if let Some(ref efi) = metrics.efi {
-        println!("\n📊 EFI - Execution Fidelity Index");
-        println!("   Value: {:.1}%", efi.value);
+        println!("\n📊 EFI - Evidence Fidelity Index");
+        println!("   Value: {:.2} ({:.0}% of scored claims substantiated)", efi.value, efi.value * 100.0);
         println!("   Status: {:?}", efi.status);
-        println!("   Threshold: Pass ≥{:.0}%, Warning ≥{:.0}%, Fail <{:.0}%",
+        println!("   Threshold: Pass ≥{:.2}, Warning ≥{:.2}, Fail <{:.2}",
                  efi.threshold.pass,
                  efi.threshold.warning.unwrap_or(0.0),
                  efi.threshold.halt.unwrap_or(0.0));
@@ -270,9 +270,9 @@ All proposed work remains within defined scope boundaries.
             println!("      {}", rec);
         }
 
-        // Verify required fields
-        assert!(efi.value >= 0.0 && efi.value <= 100.0, "EFI value out of range");
-        assert!(efi.inputs_used.len() >= 2, "EFI should have at least 2 inputs");
+        // Verify required fields (FIX-025: 0.0-1.0 scale, 3 inputs for taxonomy)
+        assert!(efi.value >= 0.0 && efi.value <= 1.0, "EFI value out of range (should be 0.0-1.0)");
+        assert!(efi.inputs_used.len() >= 3, "EFI should have at least 3 inputs (Total, Scored, Substantiated)");
         assert!(!efi.calculation_method.is_empty(), "EFI missing calculation method");
         assert!(!efi.interpretation.is_empty(), "EFI missing interpretation");
     }
