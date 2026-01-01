@@ -289,7 +289,7 @@ Respond in the EXACT format above, preserving the section headers."#,
         info!("Calling Claude API for intent interpretation...");
         let response = self
             .claude_client
-            .call_claude(&system_prompt, &user_prompt, None, Some(2000))
+            .call_claude(&system_prompt, &user_prompt, None, Some(2000), None)
             .await
             .context("Failed to call Claude API for intent interpretation")?;
 
@@ -434,7 +434,7 @@ Respond in the EXACT format above, preserving the section headers."#,
         );
 
         let anchor_content = self.claude_client
-            .call_claude(&system_prompt, &user_message, None, Some(4096))
+            .call_claude(&system_prompt, &user_message, None, Some(4096), None)
             .await
             .context("Failed to generate Intent_Anchor content")?;
 
@@ -526,7 +526,7 @@ Respond in the EXACT format above, preserving the section headers."#,
         );
 
         let charter_content = self.claude_client
-            .call_claude(&system_prompt, &user_message, None, Some(4096))
+            .call_claude(&system_prompt, &user_message, None, Some(4096), None)
             .await
             .context("Failed to generate Charter content")?;
 

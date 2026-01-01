@@ -253,7 +253,7 @@ Format your response as:
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(2000))
+            .call_claude(system_prompt, &user_message, None, Some(2000), None)
             .await?;
 
         // Extract key findings (simple parsing - look for lines starting with - under Key Findings)
@@ -324,7 +324,7 @@ Format your response as:
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(2000))
+            .call_claude(system_prompt, &user_message, None, Some(2000), None)
             .await?;
 
         let key_findings = self.extract_key_findings(&response);
@@ -396,7 +396,7 @@ Format your response as:
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(2000))
+            .call_claude(system_prompt, &user_message, None, Some(2000), None)
             .await?;
 
         let key_findings = self.extract_key_findings(&response);
@@ -468,7 +468,7 @@ Format your response as:
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(2000))
+            .call_claude(system_prompt, &user_message, None, Some(2000), None)
             .await?;
 
         let key_findings = self.extract_key_findings(&response);
@@ -546,7 +546,7 @@ Format your response as:
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(2000))
+            .call_claude(system_prompt, &user_message, None, Some(2000), None)
             .await?;
 
         let key_findings = self.extract_key_findings(&response);
@@ -632,7 +632,7 @@ Format your response as:
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(2000))
+            .call_claude(system_prompt, &user_message, None, Some(2000), None)
             .await?;
 
         let key_findings = self.extract_key_findings(&response);
@@ -721,7 +721,7 @@ Format your response as a comprehensive Integrated Diagnostic Summary that will 
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(3000))
+            .call_claude(system_prompt, &user_message, None, Some(3000), None)
             .await?;
 
         Ok(response)
@@ -941,7 +941,7 @@ RATIONALE: [Why this captures the essence]
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1500))
+            .call_claude(system_prompt, &user_message, None, Some(1500), None)
             .await?;
 
         // Extract the thesis statement from the response
@@ -990,7 +990,7 @@ Provide between 3-7 principles.
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1500))
+            .call_claude(system_prompt, &user_message, None, Some(1500), None)
             .await?;
 
         // Extract principles from numbered list
@@ -1069,7 +1069,7 @@ MODEL DIAGRAM: [Simple text representation of the structure]
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1500))
+            .call_claude(system_prompt, &user_message, None, Some(1500), None)
             .await?;
 
         // Extract geometry selection
@@ -1150,7 +1150,7 @@ CAUSAL MAP:
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(2000))
+            .call_claude(system_prompt, &user_message, None, Some(2000), None)
             .await?;
 
         Ok(response)
@@ -1198,7 +1198,7 @@ Write the narrative as a single cohesive paragraph.
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1000))
+            .call_claude(system_prompt, &user_message, None, Some(1000), None)
             .await?;
 
         Ok(response.trim().to_string())
@@ -1238,7 +1238,7 @@ Provide 5-15 entries.
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(2000))
+            .call_claude(system_prompt, &user_message, None, Some(2000), None)
             .await?;
 
         // Parse glossary entries - try multiple formats
@@ -1379,7 +1379,7 @@ Provide 3-7 limitation statements.
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1500))
+            .call_claude(system_prompt, &user_message, None, Some(1500), None)
             .await?;
 
         // Extract limitations from bullet points

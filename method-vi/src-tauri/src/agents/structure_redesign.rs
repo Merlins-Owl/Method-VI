@@ -69,7 +69,7 @@ impl StructureRedesignAgent {
         );
 
         let architecture_content = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(4096))
+            .call_claude(system_prompt, &user_message, None, Some(4096), None)
             .await
             .context("Failed to generate Architecture Map content")?;
 
@@ -220,7 +220,7 @@ impl StructureRedesignAgent {
         );
 
         let architecture = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(8192))
+            .call_claude(system_prompt, &user_message, None, Some(8192), None)
             .await
             .context("Failed to generate framework architecture")?;
 

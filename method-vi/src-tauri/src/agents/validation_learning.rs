@@ -273,7 +273,7 @@ impl ValidationLearningAgent {
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(4096))
+            .call_claude(system_prompt, &user_message, None, Some(4096), None)
             .await?;
 
         // Parse response (simplified - in production would use structured output)
@@ -335,7 +335,7 @@ impl ValidationLearningAgent {
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(4096))
+            .call_claude(system_prompt, &user_message, None, Some(4096), None)
             .await?;
 
         let status = if response.contains("PASS") {
@@ -394,7 +394,7 @@ impl ValidationLearningAgent {
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(4096))
+            .call_claude(system_prompt, &user_message, None, Some(4096), None)
             .await?;
 
         let status = if response.contains("PASS") {
@@ -452,7 +452,7 @@ impl ValidationLearningAgent {
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(4096))
+            .call_claude(system_prompt, &user_message, None, Some(4096), None)
             .await?;
 
         let status = if response.contains("PASS") {
@@ -513,7 +513,7 @@ impl ValidationLearningAgent {
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(4096))
+            .call_claude(system_prompt, &user_message, None, Some(4096), None)
             .await?;
 
         let status = if response.contains("PASS") {
@@ -574,7 +574,7 @@ impl ValidationLearningAgent {
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(4096))
+            .call_claude(system_prompt, &user_message, None, Some(4096), None)
             .await?;
 
         let status = if response.contains("PASS") {

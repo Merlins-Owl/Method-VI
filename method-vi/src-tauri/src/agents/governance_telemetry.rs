@@ -104,8 +104,8 @@ impl Default for ThresholdsConfig {
     fn default() -> Self {
         Self {
             ci: MetricThreshold {
-                pass: 0.80,
-                warning: Some(0.70),
+                pass: 0.70,  // FIX-023: Lowered from 0.80 for step-semantic evaluation
+                warning: Some(0.50),  // FIX-023: Adjusted from 0.70
                 halt: Some(0.50),
             },
             ev: MetricThreshold {
@@ -134,6 +134,67 @@ impl Default for ThresholdsConfig {
                 halt: Some(0.70),
             },
         }
+    }
+}
+
+/// CI dimension weights for step-semantic evaluation (FIX-023)
+///
+/// Different Method-VI steps have different clarity priorities:
+/// - Steps 1-2: Balanced weights (governance needs all-around clarity)
+/// - Steps 3-4: Logical flow critical (diagnostics/synthesis prioritize reasoning)
+/// - Steps 5-6: Structure important (deliverables need consistent organization)
+#[derive(Debug, Clone)]
+struct CIWeights {
+    logical_flow: f32,
+    term_consistency: f32,
+    sentence_clarity: f32,
+    structure_consistency: f32,
+}
+
+/// Get CI weights for the current step (FIX-023)
+///
+/// Per Method-VI Metrics Redesign Package v1.0, Section 2.1
+fn get_ci_weights(step: u8) -> CIWeights {
+    match step {
+        // Profile A: Inception/Governance (Steps 1-2)
+        // Balanced weights - governance documents need all-around clarity
+        1 | 2 => CIWeights {
+            logical_flow: 0.30,
+            term_consistency: 0.30,
+            sentence_clarity: 0.25,
+            structure_consistency: 0.15,
+        },
+        // Profile B: Analysis/Synthesis (Steps 3-4)
+        // Logical flow critical - diagnostics prioritize traceable reasoning
+        // Structure unimportant - analysis is exploratory, not formatted
+        3 | 4 => CIWeights {
+            logical_flow: 0.50,
+            term_consistency: 0.15,
+            sentence_clarity: 0.30,
+            structure_consistency: 0.05,  // Very low for diagnostic output
+        },
+        // Profile C: Production/Validation (Steps 5-6)
+        // Structure important - deliverables need consistent organization
+        5 | 6 => CIWeights {
+            logical_flow: 0.25,
+            term_consistency: 0.25,
+            sentence_clarity: 0.20,
+            structure_consistency: 0.30,  // High for deliverables
+        },
+        _ => get_ci_weights(1),  // Default to Profile A
+    }
+}
+
+/// Get step context for CI evaluation (FIX-023)
+fn get_step_context(step: u8) -> (&'static str, &'static str) {
+    match step {
+        1 => ("Baseline Establishment", "Create governing Charter; clarity prevents downstream misalignment"),
+        2 => ("Governance Calibration", "Configure monitoring; clarity ensures correct rule application"),
+        3 => ("Multi-Angle Analysis", "Diagnostic deep-dive; clarity ensures synthesis can interpret findings"),
+        4 => ("Synthesis Lock-In", "Transform analysis to framework; clarity ensures deliverable has sound foundation"),
+        5 => ("Structured Output", "Produce deliverable; clarity ensures end-user comprehension"),
+        6 => ("Validation & Learning", "Final quality gate; clarity confirms deliverable is ready for use"),
+        _ => ("Unknown Step", "Evaluating content clarity"),
     }
 }
 
@@ -217,7 +278,7 @@ impl GovernanceTelemetryAgent {
         info!("Calculating Critical 6 metrics for step {}", step);
 
         // Calculate each metric
-        let ci = self.calculate_ci(content).await?;
+        let ci = self.calculate_ci(content, step).await?;
         let ev = self.calculate_ev(content).await?;
         let ias = self.calculate_ias(content, charter_objectives).await?;
         let efi = self.calculate_efi(content, step).await?;
@@ -234,43 +295,104 @@ impl GovernanceTelemetryAgent {
         })
     }
 
-    /// Calculate CI (Coherence Index)
+    // =============================================================================
+    // CI (Coherence Index) - Step-Semantic Weights (FIX-023)
+    // =============================================================================
+
+    /// Calculate CI (Coherence Index) with step-semantic weights
     ///
-    /// Analyzes content for structural coherence, term consistency, and logical flow.
-    /// Returns 0.0-1.0 score.
-    async fn calculate_ci(&self, content: &str) -> Result<MetricResult> {
-        debug!("Calculating CI (Coherence Index)");
+    /// FIX-023: Uses step-aware evaluation that prioritizes different clarity aspects
+    /// based on the step's purpose:
+    /// - Steps 1-2: Balanced weights (governance documents)
+    /// - Steps 3-4: Logical flow critical (analysis/synthesis)
+    /// - Steps 5-6: Structure important (deliverables)
+    ///
+    /// Returns 0.0-1.0 score with detailed dimension breakdown.
+    async fn calculate_ci(&self, content: &str, step: u8) -> Result<MetricResult> {
+        debug!("Calculating CI (Coherence Index) for Step {}", step);
 
-        let system_prompt = "You are a coherence analysis expert for Method-VI governance. \
-            Analyze content for structural coherence, term consistency, and logical flow. \
-            Return ONLY a JSON object with this exact structure: \
-            {\"score\": <number 0-1>, \"reasoning\": \"<explanation>\"}";
+        let weights = get_ci_weights(step);
+        let (step_name, step_purpose) = get_step_context(step);
 
-        let user_message = format!(
-            "Analyze this content for coherence:\n\n{}\n\n\
-            Evaluate:\n\
-            1. Structural coherence (organization, flow)\n\
-            2. Term consistency (uniform terminology)\n\
-            3. Logical flow (ideas connect properly)\n\n\
-            Return score 0.0-1.0 and brief reasoning.",
+        let system_prompt = "You are evaluating the CLARITY of content for a specific Method-VI step. \
+            Score each dimension objectively from 0.0 to 1.0. \
+            Return ONLY valid JSON.";
+
+        let user_message = format!(r#"STEP CONTEXT: Step {} — {}
+PURPOSE: {}
+
+Evaluate the content on four dimensions. Score each from 0.0 to 1.0:
+
+1. LOGICAL FLOW ({:.0}% weight)
+   - Do ideas connect in a traceable sequence?
+   - Can a reader follow the reasoning from start to end?
+
+2. TERM CONSISTENCY ({:.0}% weight)
+   - Are key terms used uniformly throughout?
+   - Are there conflicting definitions?
+
+3. SENTENCE CLARITY ({:.0}% weight)
+   - Are individual sentences parseable on first read?
+   - Is prose free of convoluted constructions?
+
+4. STRUCTURE CONSISTENCY ({:.0}% weight)
+   - Is content organized predictably?
+   - Do sections/headers aid comprehension?
+
+IMPORTANT: Measure CLARITY only, not correctness or completeness.
+
+Calculate weighted CI:
+CI = (flow × {:.2}) + (term × {:.2}) + (clarity × {:.2}) + (structure × {:.2})
+
+Respond in JSON:
+{{
+  "logical_flow": {{"score": 0.XX, "rationale": "..."}},
+  "term_consistency": {{"score": 0.XX, "rationale": "..."}},
+  "sentence_clarity": {{"score": 0.XX, "rationale": "..."}},
+  "structure_consistency": {{"score": 0.XX, "rationale": "..."}},
+  "ci_score": 0.XX,
+  "overall_assessment": "One sentence summary"
+}}
+
+CONTENT:
+---
+{}
+---"#,
+            step, step_name, step_purpose,
+            weights.logical_flow * 100.0,
+            weights.term_consistency * 100.0,
+            weights.sentence_clarity * 100.0,
+            weights.structure_consistency * 100.0,
+            weights.logical_flow,
+            weights.term_consistency,
+            weights.sentence_clarity,
+            weights.structure_consistency,
             content
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1024))
+            .call_claude(&system_prompt, &user_message, None, Some(2048), Some(0.0))
             .await?;
 
         // Parse JSON response - extract JSON if embedded in text
         let parsed: serde_json::Value = self.extract_json(&response)
             .context(format!("Failed to parse CI response as JSON. Raw response: {}", &response[..response.len().min(200)]))?;
 
-        let score = parsed["score"]
+        // Extract CI score (use ci_score if available, otherwise fall back to score)
+        let score = parsed["ci_score"]
             .as_f64()
-            .context("Missing or invalid 'score' field in CI response")?;
+            .or_else(|| parsed["score"].as_f64())
+            .context("Missing or invalid 'ci_score' or 'score' field in CI response")?;
 
-        let reasoning = parsed["reasoning"]
+        // Extract dimension scores for detailed interpretation
+        let logical_flow = parsed["logical_flow"]["score"].as_f64().unwrap_or(0.0);
+        let term_consistency = parsed["term_consistency"]["score"].as_f64().unwrap_or(0.0);
+        let sentence_clarity = parsed["sentence_clarity"]["score"].as_f64().unwrap_or(0.0);
+        let structure_consistency = parsed["structure_consistency"]["score"].as_f64().unwrap_or(0.0);
+
+        let overall_assessment = parsed["overall_assessment"]
             .as_str()
-            .unwrap_or("No reasoning provided")
+            .unwrap_or("No assessment provided")
             .to_string();
 
         let status = self.evaluate_status(score, &self.thresholds.ci, false);
@@ -282,15 +404,49 @@ impl GovernanceTelemetryAgent {
             status: status.clone(),
             inputs_used: vec![
                 MetricInput {
-                    name: "Content Length".to_string(),
-                    value: MetricInputValue::Number(content.len() as f64),
-                    source: "Current Content".to_string(),
+                    name: "Step".to_string(),
+                    value: MetricInputValue::Number(step as f64),
+                    source: "Orchestrator".to_string(),
+                },
+                MetricInput {
+                    name: "Logical Flow".to_string(),
+                    value: MetricInputValue::Number(logical_flow),
+                    source: format!("LLM ({:.0}% weight)", weights.logical_flow * 100.0),
+                },
+                MetricInput {
+                    name: "Term Consistency".to_string(),
+                    value: MetricInputValue::Number(term_consistency),
+                    source: format!("LLM ({:.0}% weight)", weights.term_consistency * 100.0),
+                },
+                MetricInput {
+                    name: "Sentence Clarity".to_string(),
+                    value: MetricInputValue::Number(sentence_clarity),
+                    source: format!("LLM ({:.0}% weight)", weights.sentence_clarity * 100.0),
+                },
+                MetricInput {
+                    name: "Structure Consistency".to_string(),
+                    value: MetricInputValue::Number(structure_consistency),
+                    source: format!("LLM ({:.0}% weight)", weights.structure_consistency * 100.0),
                 },
             ],
-            calculation_method: "LLM-based analysis of structural coherence, term consistency, and logical flow".to_string(),
-            interpretation: reasoning,
+            calculation_method: format!(
+                "Step-semantic weighted CI (Step {} - {}): \
+                Flow={:.2}×{:.2} + Term={:.2}×{:.2} + Clarity={:.2}×{:.2} + Structure={:.2}×{:.2} = {:.2}",
+                step, step_name,
+                logical_flow, weights.logical_flow,
+                term_consistency, weights.term_consistency,
+                sentence_clarity, weights.sentence_clarity,
+                structure_consistency, weights.structure_consistency,
+                score
+            ),
+            interpretation: overall_assessment,
             recommendation: if status != MetricStatus::Pass {
-                Some("Review content structure and ensure consistent terminology throughout.".to_string())
+                Some(match step {
+                    1 | 2 => "Improve all-around clarity. Focus on term consistency and logical flow for governance documents.".to_string(),
+                    3 | 4 => "Strengthen logical flow and sentence clarity. Structure is less critical for diagnostic/synthesis content.".to_string(),
+                    5 | 6 => "Improve structure consistency and organization. Deliverables require predictable formatting.".to_string(),
+                    _ => "Review content clarity across all dimensions.".to_string(),
+                })
             } else {
                 None
             },
@@ -323,7 +479,7 @@ Return JSON with counts."#,
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1024))
+            .call_claude(system_prompt, &user_message, None, Some(1024), Some(0.0))
             .await?;
 
         // Parse JSON response - extract JSON if embedded in text
@@ -458,7 +614,7 @@ Return JSON with counts."#,
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1024))
+            .call_claude(system_prompt, &user_message, None, Some(1024), Some(0.0))
             .await?;
 
         let parsed: serde_json::Value = self.extract_json(&response)
@@ -519,7 +675,7 @@ Return JSON with counts."#,
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1024))
+            .call_claude(system_prompt, &user_message, None, Some(1024), Some(0.0))
             .await?;
 
         let parsed: serde_json::Value = self.extract_json(&response)
@@ -654,7 +810,7 @@ Return JSON with counts."#,
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1024))
+            .call_claude(system_prompt, &user_message, None, Some(1024), Some(0.0))
             .await?;
 
         let parsed: serde_json::Value = self.extract_json(&response)
@@ -1174,7 +1330,7 @@ Return your calibration settings in a structured format."#,
 
         // Call Claude API for governance calibration
         let calibration_response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(3000))
+            .call_claude(system_prompt, &user_message, None, Some(3000), Some(0.0))
             .await
             .context("Failed to generate governance calibration")?;
 
@@ -1460,7 +1616,7 @@ Respond with ONLY a JSON object:
         );
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(300))
+            .call_claude(system_prompt, &user_message, None, Some(300), Some(0.0))
             .await?;
 
         // Parse score from response using existing extract_json helper

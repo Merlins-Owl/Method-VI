@@ -39,6 +39,8 @@ struct ClaudeRequest {
     messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
 }
 
 /// Usage information from API response
@@ -111,11 +113,13 @@ impl AnthropicClient {
         user_message: &str,
         model: Option<&str>,
         max_tokens: Option<u32>,
+        temperature: Option<f32>,
     ) -> Result<String> {
         let model = model.unwrap_or(DEFAULT_MODEL);
         let max_tokens = max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
 
-        debug!("Calling Claude API with model: {}, max_tokens: {}", model, max_tokens);
+        debug!("Calling Claude API with model: {}, max_tokens: {}, temperature: {:?}",
+               model, max_tokens, temperature);
         debug!("System prompt length: {} chars", system_prompt.len());
         debug!("User message length: {} chars", user_message.len());
 
@@ -132,6 +136,7 @@ impl AnthropicClient {
             } else {
                 Some(system_prompt.to_string())
             },
+            temperature,
         };
 
         // Make API request
@@ -270,12 +275,14 @@ mod tests {
                 content: "Hello".to_string(),
             }],
             system: Some("You are a helpful assistant".to_string()),
+            temperature: Some(0.0),
         };
 
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("claude-sonnet-4-20250514"));
         assert!(json.contains("Hello"));
         assert!(json.contains("You are a helpful assistant"));
+        assert!(json.contains("0.0"));  // Temperature should be included
     }
 
     #[test]
@@ -288,10 +295,12 @@ mod tests {
                 content: "Test".to_string(),
             }],
             system: None,
+            temperature: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
         assert!(!json.contains("system"));
+        assert!(!json.contains("temperature"));  // Should not be included when None
     }
 
     #[test]
@@ -316,6 +325,7 @@ mod tests {
                     "Say hello in one word.",
                     None,
                     Some(10),
+                    None,
                 )
                 .await;
 
