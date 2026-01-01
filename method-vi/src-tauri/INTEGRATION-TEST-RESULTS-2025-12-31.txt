@@ -1,0 +1,474 @@
+warning: variant `Intent_Anchor` should have an upper camel case name
+  --> src\spine\types.rs:12:5
+   |
+12 |     Intent_Anchor,
+   |     ^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `IntentAnchor`
+   |
+   = note: `#[warn(non_camel_case_types)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: variant `Core_Thesis` should have an upper camel case name
+  --> src\spine\types.rs:24:5
+   |
+24 |     Core_Thesis,
+   |     ^^^^^^^^^^^ help: convert the identifier to upper camel case: `CoreThesis`
+
+warning: variant `Governance_Summary` should have an upper camel case name
+  --> src\spine\types.rs:27:5
+   |
+27 |     Governance_Summary,
+   |     ^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `GovernanceSummary`
+
+warning: variant `Lens_Efficacy_Report` should have an upper camel case name
+  --> src\spine\types.rs:30:5
+   |
+30 |     Lens_Efficacy_Report,
+   |     ^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `LensEfficacyReport`
+
+warning: variant `Innovation_Notes` should have an upper camel case name
+  --> src\spine\types.rs:33:5
+   |
+33 |     Innovation_Notes,
+   |     ^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `InnovationNotes`
+
+warning: variant `Diagnostic_Summary` should have an upper camel case name
+  --> src\spine\types.rs:36:5
+   |
+36 |     Diagnostic_Summary,
+   |     ^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `DiagnosticSummary`
+
+warning: variant `Framework_Draft` should have an upper camel case name
+  --> src\spine\types.rs:39:5
+   |
+39 |     Framework_Draft,
+   |     ^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `FrameworkDraft`
+
+warning: unused imports: `Deserialize` and `Serialize`
+ --> src\agents\structure_redesign.rs:4:13
+  |
+4 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^  ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: ambiguous glob re-exports
+  --> src\commands\mod.rs:13:9
+   |
+13 | pub use step2::*;
+   |         ^^^^^^^^ the name `MetricsSnapshot` in the type namespace is first re-exported here
+...
+16 | pub use step5::*;
+   |         -------- but the name `MetricsSnapshot` in the type namespace is also re-exported here
+   |
+   = note: `#[warn(ambiguous_glob_reexports)]` on by default
+
+warning: function `database_exists` is never used
+  --> src\database\mod.rs:34:8
+   |
+34 | pub fn database_exists(app_handle: &tauri::AppHandle) -> Result<bool> {
+   |        ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `get_connection` is never used
+  --> src\database\mod.rs:69:8
+   |
+69 | pub fn get_connection(app_handle: &tauri::AppHandle) -> Result<Connection> {
+   |        ^^^^^^^^^^^^^^
+
+warning: struct `Run` is never constructed
+ --> src\database\models.rs:6:12
+  |
+6 | pub struct Run {
+  |            ^^^
+
+warning: struct `Artifact` is never constructed
+  --> src\database\models.rs:18:12
+   |
+18 | pub struct Artifact {
+   |            ^^^^^^^^
+
+warning: struct `SpineEdge` is never constructed
+  --> src\database\models.rs:32:12
+   |
+32 | pub struct SpineEdge {
+   |            ^^^^^^^^^
+
+warning: struct `Pattern` is never constructed
+  --> src\database\models.rs:41:12
+   |
+41 | pub struct Pattern {
+   |            ^^^^^^^
+
+warning: struct `LedgerEntry` is never constructed
+  --> src\database\models.rs:64:12
+   |
+64 | pub struct LedgerEntry {
+   |            ^^^^^^^^^^^
+
+warning: struct `PersistentFlaw` is never constructed
+  --> src\database\models.rs:78:12
+   |
+78 | pub struct PersistentFlaw {
+   |            ^^^^^^^^^^^^^^
+
+warning: function `get_schema_version` is never used
+   --> src\database\schema.rs:144:8
+    |
+144 | pub fn get_schema_version(conn: &Connection) -> Result<i32> {
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `create_run` is never used
+ --> src\database\runs.rs:6:8
+  |
+6 | pub fn create_run(conn: &Connection, run: &Run) -> Result<()> {
+  |        ^^^^^^^^^^
+
+warning: function `get_run` is never used
+  --> src\database\runs.rs:28:8
+   |
+28 | pub fn get_run(conn: &Connection, id: &str) -> Result<Option<Run>> {
+   |        ^^^^^^^
+
+warning: function `update_run` is never used
+  --> src\database\runs.rs:54:8
+   |
+54 | pub fn update_run(conn: &Connection, run: &Run) -> Result<()> {
+   |        ^^^^^^^^^^
+
+warning: function `delete_run` is never used
+  --> src\database\runs.rs:87:8
+   |
+87 | pub fn delete_run(conn: &Connection, id: &str) -> Result<()> {
+   |        ^^^^^^^^^^
+
+warning: function `list_runs` is never used
+   --> src\database\runs.rs:100:8
+    |
+100 | pub fn list_runs(conn: &Connection) -> Result<Vec<Run>> {
+    |        ^^^^^^^^^
+
+warning: function `get_active_runs` is never used
+   --> src\database\runs.rs:127:8
+    |
+127 | pub fn get_active_runs(conn: &Connection) -> Result<Vec<Run>> {
+    |        ^^^^^^^^^^^^^^^
+
+warning: function `get_completed_runs` is never used
+   --> src\database\runs.rs:154:8
+    |
+154 | pub fn get_completed_runs(conn: &Connection) -> Result<Vec<Run>> {
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `create_artifact` is never used
+ --> src\database\artifacts.rs:8:8
+  |
+8 | pub fn create_artifact(_conn: &Connection, _artifact: &Artifact) -> Result<()> {
+  |        ^^^^^^^^^^^^^^^
+
+warning: function `get_artifact` is never used
+  --> src\database\artifacts.rs:12:8
+   |
+12 | pub fn get_artifact(_conn: &Connection, _id: &str) -> Result<Option<Artifact>> {
+   |        ^^^^^^^^^^^^
+
+warning: function `list_artifacts_by_run` is never used
+  --> src\database\artifacts.rs:16:8
+   |
+16 | pub fn list_artifacts_by_run(_conn: &Connection, _run_id: &str) -> Result<Vec<Artifact>> {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `create_pattern` is never used
+ --> src\database\patterns.rs:8:8
+  |
+8 | pub fn create_pattern(_conn: &Connection, _pattern: &Pattern) -> Result<()> {
+  |        ^^^^^^^^^^^^^^
+
+warning: function `get_pattern` is never used
+  --> src\database\patterns.rs:12:8
+   |
+12 | pub fn get_pattern(_conn: &Connection, _id: &str) -> Result<Option<Pattern>> {
+   |        ^^^^^^^^^^^
+
+warning: function `list_patterns_by_category` is never used
+  --> src\database\patterns.rs:16:8
+   |
+16 | pub fn list_patterns_by_category(_conn: &Connection, _category: &str) -> Result<Vec<Pattern>> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_starter_patterns` is never used
+  --> src\database\patterns.rs:20:8
+   |
+20 | pub fn get_starter_patterns(_conn: &Connection) -> Result<Vec<Pattern>> {
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `create_ledger_entry` is never used
+ --> src\database\ledger.rs:8:8
+  |
+8 | pub fn create_ledger_entry(_conn: &Connection, _entry: &LedgerEntry) -> Result<()> {
+  |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_ledger_entry` is never used
+  --> src\database\ledger.rs:12:8
+   |
+12 | pub fn get_ledger_entry(_conn: &Connection, _id: i64) -> Result<Option<LedgerEntry>> {
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `list_ledger_entries_by_run` is never used
+  --> src\database\ledger.rs:16:8
+   |
+16 | pub fn list_ledger_entries_by_run(_conn: &Connection, _run_id: &str) -> Result<Vec<LedgerEntry>> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `create_spine_edge` is never used
+ --> src\database\spine.rs:8:8
+  |
+8 | pub fn create_spine_edge(_conn: &Connection, _edge: &SpineEdge) -> Result<()> {
+  |        ^^^^^^^^^^^^^^^^^
+
+warning: function `get_spine_edges_for_artifact` is never used
+  --> src\database\spine.rs:12:8
+   |
+12 | pub fn get_spine_edges_for_artifact(_conn: &Connection, _artifact_id: &str) -> Result<Vec<SpineEdge>> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `delete_spine_edge` is never used
+  --> src\database\spine.rs:16:8
+   |
+16 | pub fn delete_spine_edge(_conn: &Connection, _source_id: &str, _target_id: &str) -> Result<()> {
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `create_flaw` is never used
+ --> src\database\flaws.rs:8:8
+  |
+8 | pub fn create_flaw(_conn: &Connection, _flaw: &PersistentFlaw) -> Result<()> {
+  |        ^^^^^^^^^^^
+
+warning: function `get_flaw` is never used
+  --> src\database\flaws.rs:12:8
+   |
+12 | pub fn get_flaw(_conn: &Connection, _id: i64) -> Result<Option<PersistentFlaw>> {
+   |        ^^^^^^^^
+
+warning: function `list_open_flaws` is never used
+  --> src\database\flaws.rs:16:8
+   |
+16 | pub fn list_open_flaws(_conn: &Connection) -> Result<Vec<PersistentFlaw>> {
+   |        ^^^^^^^^^^^^^^^
+
+warning: function `update_flaw_occurrence` is never used
+  --> src\database\flaws.rs:20:8
+   |
+20 | pub fn update_flaw_occurrence(_conn: &Connection, _id: i64) -> Result<()> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `MessageContent` is never constructed
+  --> src\api\anthropic.rs:21:8
+   |
+21 | struct MessageContent {
+   |        ^^^^^^^^^^^^^^
+
+warning: field `content_type` is never read
+  --> src\api\anthropic.rs:57:5
+   |
+55 | struct ResponseContent {
+   |        --------------- field in this struct
+56 |     #[serde(rename = "type")]
+57 |     content_type: String,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ResponseContent` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `id`, `response_type`, and `role` are never read
+  --> src\api\anthropic.rs:64:5
+   |
+63 | struct ClaudeResponse {
+   |        -------------- fields in this struct
+64 |     id: String,
+   |     ^^
+65 |     #[serde(rename = "type")]
+66 |     response_type: String,
+   |     ^^^^^^^^^^^^^
+67 |     role: String,
+   |     ^^^^
+   |
+   = note: `ClaudeResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: `method-vi` (lib) generated 45 warnings (run `cargo fix --lib -p method-vi` to apply 1 suggestion)
+   Compiling method-vi v0.1.0 (C:\Users\ryanb\Method-VI\method-vi-app\method-vi\src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.22s
+     Running `target\debug\examples\test_integration_metrics.exe`
+╔════════════════════════════════════════════════════════════════════════╗
+║   INTEGRATION TEST SUITE: METRICS REDESIGN VERIFICATION                ║
+║   Tests: FIX-021 through FIX-027                                       ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+─────────────────────────────────────────────────────────────────────────
+TEST 1: CI Variance (Determinism)
+─────────────────────────────────────────────────────────────────────────
+Expected: All 5 runs within ±0.02 variance
+
+  Run 1: CI = 0.7300
+  Run 2: CI = 0.7300
+  Run 3: CI = 0.7300
+  Run 4: CI = 0.7300
+  Run 5: CI = 0.7300
+
+  Variance: 0.0000
+  Result: ✅ PASS
+  Details: 5 CI scores within ±0.0000 range
+
+─────────────────────────────────────────────────────────────────────────
+TEST 2: CI Step-Semantic Weighting
+─────────────────────────────────────────────────────────────────────────
+Expected: Unstructured but logical content scores higher at Step 3 than Step 5
+
+  Step 3 (Multi-Angle Analysis) - Structure weight: 5%
+    CI Score: 0.7700
+
+  Step 5 (Structure & Redesign) - Structure weight: 30%
+    CI Score: 0.7500
+
+  Result: ✅ PASS
+  Details: Step 3 (0.7700) > Step 5 (0.7500), Step 3 ≥ 0.50
+
+─────────────────────────────────────────────────────────────────────────
+TEST 3: EFI Claim Taxonomy (Pure Instructional)
+─────────────────────────────────────────────────────────────────────────
+Expected: EFI = 1.0 (no factual claims to score)
+
+  EFI Score: 0.00
+  Status: Fail
+  Interpretation: All four prescriptive claims about best practices lack supporting evidence or justification for their recommended outcomes.
+
+  Result: ❌ FAIL
+  Details: Pure instructional content → EFI = 0.00
+
+─────────────────────────────────────────────────────────────────────────
+TEST 4: EFI Mixed Content (Factual + Instructional)
+─────────────────────────────────────────────────────────────────────────
+Expected: EFI ≈ 0.60 (3/5 factual claims substantiated, ignore instructional)
+
+  EFI Score: 0.60
+  Status: Warning
+  Interpretation: Five factual claims required evidence, but only three provided supporting data sources, resulting in 60% evidence fidelity.
+
+  Result: ✅ PASS
+  Details: 3/5 claims substantiated → EFI = 0.60 (expected: 0.60 ±0.10)
+
+─────────────────────────────────────────────────────────────────────────
+TEST 5: PCI Determinism
+─────────────────────────────────────────────────────────────────────────
+Expected: Identical scores on same content (PCI uses deterministic checklist)
+
+  Run 1 PCI: 0.8750
+  Run 2 PCI: 0.8750
+
+  Result: ✅ PASS
+  Details: Deterministic checklist produces identical scores
+
+─────────────────────────────────────────────────────────────────────────
+TEST 6: IAS Soft Gate (Resynthesis Pause)
+─────────────────────────────────────────────────────────────────────────
+Expected: IAS ≥ 0.30 triggers ResynthesisPause, not HALT
+
+  IAS Score: 0.70
+  Status: Pass
+  HALT: None
+  IAS Warning: false
+
+  Result: ❌ FAIL
+  Details: IAS 0.70 in soft gate range → No HALT (warning only)
+
+─────────────────────────────────────────────────────────────────────────
+TEST 7: IAS Hard HALT
+─────────────────────────────────────────────────────────────────────────
+Expected: IAS < 0.30 triggers HALT
+
+  IAS Score: 0.20
+  Status: Fail
+  HALT: Some("HALT: Critical metrics failed: CI critically low: 0.26, IAS critically low: 0.20")
+
+  Result: ✅ PASS
+  Details: IAS 0.20 < 0.30 → HALT triggered
+
+─────────────────────────────────────────────────────────────────────────
+TEST 8: CI HALT (Low Coherence)
+─────────────────────────────────────────────────────────────────────────
+Expected: Incoherent content triggers CI failure and HALT
+
+  CI Score: 0.03 (Status: Fail)
+  HALT: Some("HALT: Critical metrics failed: CI critically low: 0.03")
+
+  Result: ✅ PASS
+  Details: CI failure triggers HALT
+
+─────────────────────────────────────────────────────────────────────────
+TEST 9: EV Advisory (Informational Only)
+─────────────────────────────────────────────────────────────────────────
+Expected: High variance → Pass status, no HALT
+
+  EV Variance: 85.7%
+  EV Status: Pass
+  HALT: Some("HALT: Critical metrics failed: CI critically low: 0.24")
+
+  Result: ✅ PASS
+  Details: EV is informational, variance 85.7% shows Pass status
+
+─────────────────────────────────────────────────────────────────────────
+TEST 10: SEC Placeholder
+─────────────────────────────────────────────────────────────────────────
+Expected: SEC always returns 100% with Pass status
+
+  SEC Value: 100.0%
+  SEC Status: Pass
+  Inputs Used: 0 (expected: 0)
+
+  Result: ✅ PASS
+  Details: SEC placeholder returns 100% Pass with no inputs
+
+╔════════════════════════════════════════════════════════════════════════╗
+║                          TEST SUMMARY                                  ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+✅ Test 1: CI Variance
+   Variance: 0.0000 (threshold: 0.02)
+
+✅ Test 2: CI Step-Semantic
+   Step 3: 0.7700, Step 5: 0.7500
+
+❌ Test 3: EFI Taxonomy (Instructional)
+   EFI: 0.00 (expected: 1.0)
+
+✅ Test 4: EFI Mixed Content
+   EFI: 0.60 (expected: 0.60 ±0.10)
+
+✅ Test 5: PCI Determinism
+   Run 1: 0.8750, Run 2: 0.8750
+
+❌ Test 6: IAS Soft Gate
+   IAS: 0.70, HALT: false
+
+✅ Test 7: IAS Hard HALT
+   IAS: 0.20, HALT: true
+
+✅ Test 8: CI HALT
+   CI: 0.03, HALT: true
+
+✅ Test 9: EV Advisory
+   EV: 85.7%, Status: Pass
+
+✅ Test 10: SEC Placeholder
+   SEC: 100.0%, Status: Pass
+
+─────────────────────────────────────────────────────────────────────────
+Passed: 8/10
+Failed: 2/10
+─────────────────────────────────────────────────────────────────────────
+
+Ready for Test Run 8: ❌ NO
+
+⚠️  Failed tests must be addressed before proceeding to Test Run 8
+
+╔════════════════════════════════════════════════════════════════════════╗
+║                     INTEGRATION TEST COMPLETE                          ║
+╚════════════════════════════════════════════════════════════════════════╝
