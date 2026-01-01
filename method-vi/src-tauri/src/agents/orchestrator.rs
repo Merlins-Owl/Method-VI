@@ -4,7 +4,7 @@ use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::agents::analysis_synthesis::AnalysisSynthesisAgent;
-use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent, MetricStatus};
+use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent, IASWarning, MetricStatus};
 use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
 use crate::agents::structure_redesign::StructureRedesignAgent;
 use crate::agents::validation_learning::ValidationLearningAgent;
@@ -74,6 +74,16 @@ pub enum RunState {
         all_metrics_snapshot: Option<serde_json::Value>,  // Full metrics for debugging
     },
 
+    /// IAS Warning - Re-synthesis Pause (FIX-024)
+    ///
+    /// Triggered at Step 4 when IAS is in warning range (0.30-0.69).
+    /// Synthesis may have diverged from Charter. Requires review before proceeding.
+    IASResynthesisPause {
+        score: f64,
+        message: String,
+        step: u8,
+    },
+
     /// Run permanently halted (aborted by user or unrecoverable error)
     Halted { reason: String },
 }
@@ -93,6 +103,7 @@ impl RunState {
             RunState::FutureStep(n) => *n,
             RunState::Completed => 7,
             RunState::Paused { step, .. } => *step, // Return the step where pause occurred
+            RunState::IASResynthesisPause { step, .. } => *step, // FIX-024: Return step where IAS warning occurred
             RunState::Halted { .. } => 255, // Special value for halted
         }
     }
@@ -194,6 +205,12 @@ pub struct Orchestrator {
 
     /// Latest calculated metrics from Governance Agent
     pub latest_metrics: Option<CriticalMetrics>,
+
+    /// Pending IAS Warning requiring acknowledgment (FIX-024)
+    ///
+    /// When IAS is in warning range (0.30-0.69), this field holds the warning
+    /// until the user acknowledges it. At Step 4, this triggers ResynthesisPause state.
+    pending_ias_acknowledgment: Option<IASWarning>,
 }
 
 impl Orchestrator {
@@ -282,6 +299,7 @@ impl Orchestrator {
             analysis_synthesis_agent: None, // Will be set via with_analysis_synthesis_agent()
             validation_agent: None,       // Will be set via with_validation_agent()
             latest_metrics: None,
+            pending_ias_acknowledgment: None, // FIX-024: IAS soft gate acknowledgment
         }
     }
 
@@ -317,6 +335,7 @@ impl Orchestrator {
             RunState::Step6GatePending => ContextSignal::AwaitingGate,
             RunState::Completed => ContextSignal::Completed,
             RunState::Paused { .. } => ContextSignal::PausedForReview,
+            RunState::IASResynthesisPause { .. } => ContextSignal::PausedForReview, // FIX-024
             RunState::Halted { .. } => ContextSignal::Halted,
             _ => ContextSignal::Active,
         }
@@ -1634,22 +1653,96 @@ impl Orchestrator {
                     payload,
                 );
             }
-            // Check for PAUSE (warning) conditions - only if not already halted
-            else if let Some(pause_reason) = agent.check_pause_conditions(&metrics) {
-                warn!("⚠️ WARNING condition detected: {}", pause_reason);
 
-                // Emit warning signal (not a hard stop)
-                self.signal_router.emit_signal(
-                    SignalType::MetricsWarning,
-                    &self.run_id,
-                    SignalPayload {
-                        step_from: current_step as i32,
-                        step_to: current_step as i32,
-                        artifacts_produced: vec![],
-                        metrics_snapshot: Some(serde_json::to_value(&metrics)?),
-                        gate_required: false,
-                    },
-                );
+            // FIX-024: Check for IAS Warning (separate from HALT)
+            // Only check if not already halted
+            if !halt_triggered {
+                if let Some(ias_warning) = agent.check_ias_warning(&metrics, current_step) {
+                    match &ias_warning.warning_type {
+                        crate::agents::governance_telemetry::IASWarningType::ResynthesisPause => {
+                            // Step 4: Pause for re-synthesis review
+                            warn!("⚠️ IAS Re-synthesis Pause: {}", ias_warning.message);
+                            self.state = RunState::IASResynthesisPause {
+                                score: ias_warning.score,
+                                message: ias_warning.message.clone(),
+                                step: current_step,
+                            };
+
+                            // Emit signal for UI
+                            self.signal_router.emit_signal(
+                                SignalType::MetricsWarning,
+                                &self.run_id,
+                                SignalPayload {
+                                    step_from: current_step as i32,
+                                    step_to: current_step as i32,
+                                    artifacts_produced: vec![],
+                                    metrics_snapshot: Some(serde_json::to_value(&metrics)?),
+                                    gate_required: false,
+                                },
+                            );
+
+                            // Record in ledger
+                            let payload = LedgerPayload {
+                                action: "ias_resynthesis_pause".to_string(),
+                                inputs: Some(serde_json::json!({
+                                    "step": current_step,
+                                    "ias_score": ias_warning.score,
+                                })),
+                                outputs: None,
+                                rationale: Some(ias_warning.message.clone()),
+                            };
+
+                            self.ledger.create_entry(
+                                &self.run_id,
+                                EntryType::Decision,
+                                Some(current_step as i32),
+                                Some("Governance"),
+                                payload,
+                            );
+
+                            // Don't proceed until acknowledged
+                            halt_triggered = true; // Signal that we're paused
+                        }
+                        crate::agents::governance_telemetry::IASWarningType::AcknowledgmentRequired => {
+                            // Other steps: Log warning, store for acknowledgment
+                            warn!("⚠️ IAS Warning (requires acknowledgment): {}", ias_warning.message);
+                            self.pending_ias_acknowledgment = Some(ias_warning.clone());
+
+                            // Emit warning signal
+                            self.signal_router.emit_signal(
+                                SignalType::MetricsWarning,
+                                &self.run_id,
+                                SignalPayload {
+                                    step_from: current_step as i32,
+                                    step_to: current_step as i32,
+                                    artifacts_produced: vec![],
+                                    metrics_snapshot: Some(serde_json::to_value(&metrics)?),
+                                    gate_required: false,
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Check for PAUSE (warning) conditions - only if not already halted
+            if !halt_triggered {
+                if let Some(pause_reason) = agent.check_pause_conditions(&metrics) {
+                    warn!("⚠️ WARNING condition detected: {}", pause_reason);
+
+                    // Emit warning signal (not a hard stop)
+                    self.signal_router.emit_signal(
+                        SignalType::MetricsWarning,
+                        &self.run_id,
+                        SignalPayload {
+                            step_from: current_step as i32,
+                            step_to: current_step as i32,
+                            artifacts_produced: vec![],
+                            metrics_snapshot: Some(serde_json::to_value(&metrics)?),
+                            gate_required: false,
+                        },
+                    );
+                }
             }
 
             // Store latest metrics
@@ -1683,6 +1776,58 @@ impl Orchestrator {
         self.governance_agent
             .as_ref()
             .and_then(|agent| agent.get_e_baseline())
+    }
+
+    /// Acknowledge IAS Warning (FIX-024)
+    ///
+    /// When IAS is in warning range (0.30-0.69), the user must acknowledge the drift
+    /// before proceeding. This function records the acknowledgment and clears the warning.
+    ///
+    /// # Arguments
+    /// * `acknowledger` - Who is acknowledging (e.g., "User", "System Admin")
+    /// * `rationale` - Why the drift is acceptable (e.g., "Intentional pivot", "Expected variation")
+    ///
+    /// # Returns
+    /// Ok if warning was acknowledged, Err if no warning is pending
+    pub fn acknowledge_ias_warning(&mut self, acknowledger: &str, rationale: &str) -> Result<()> {
+        if let Some(warning) = self.pending_ias_acknowledgment.take() {
+            info!(
+                "IAS Warning acknowledged by {} at Step {}: '{}' (score: {:.2})",
+                acknowledger,
+                self.state.step_number(),
+                rationale,
+                warning.score
+            );
+
+            // Log to Steno-Ledger
+            let payload = LedgerPayload {
+                action: "ias_warning_acknowledged".to_string(),
+                inputs: Some(serde_json::json!({
+                    "acknowledger": acknowledger,
+                    "ias_score": warning.score,
+                    "step": self.state.step_number(),
+                })),
+                outputs: Some(serde_json::json!({
+                    "rationale": rationale,
+                })),
+                rationale: Some(format!(
+                    "IAS drift acknowledged: Score {:.2}, Rationale: {}",
+                    warning.score, rationale
+                )),
+            };
+
+            self.ledger.create_entry(
+                &self.run_id,
+                EntryType::Decision,
+                Some(self.state.step_number() as i32),
+                Some(acknowledger),
+                payload,
+            );
+
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("No IAS warning pending acknowledgment"))
+        }
     }
 
     /// Execute Step 3: Multi-Angle Analysis

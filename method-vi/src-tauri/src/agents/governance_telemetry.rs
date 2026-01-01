@@ -62,6 +62,29 @@ pub struct CriticalMetrics {
     pub pci: Option<MetricResult>,
 }
 
+/// IAS Warning Type (FIX-024)
+///
+/// IAS is a "soft gate" that warns instead of HALTing for moderate drift
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IASWarningType {
+    /// Step 4 special case - synthesis may have diverged from Charter
+    ResynthesisPause,
+    /// All other steps - requires acknowledgment to proceed
+    AcknowledgmentRequired,
+}
+
+/// IAS Warning (FIX-024)
+///
+/// Triggered when IAS is in warning range (0.30-0.69)
+/// Requires user acknowledgment to proceed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IASWarning {
+    pub score: f64,
+    pub warning_type: IASWarningType,
+    pub message: String,
+}
+
 /// E_baseline state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EBaseline {
@@ -114,14 +137,14 @@ impl Default for ThresholdsConfig {
                 halt: Some(30.0),
             },
             ias: MetricThreshold {
-                pass: 0.80,
-                warning: Some(0.70),
-                halt: Some(0.50),
+                pass: 0.70,  // FIX-024: Soft gate - aligned intent
+                warning: Some(0.30),  // FIX-024: 0.30-0.69 = drift detected, needs acknowledgment
+                halt: Some(0.30),  // FIX-024: < 0.30 = extreme drift, hard stop
             },
             efi: MetricThreshold {
-                pass: 95.0,
-                warning: Some(90.0),
-                halt: Some(80.0),
+                pass: 0.80,  // FIX-025: ≥ 80% of scored claims substantiated
+                warning: Some(0.50),  // FIX-025: 50-79% - some gaps in evidence
+                halt: Some(0.50),  // FIX-025: < 50% - majority unsubstantiated
             },
             sec: MetricThreshold {
                 pass: 100.0,
@@ -293,6 +316,46 @@ impl GovernanceTelemetryAgent {
             sec: Some(sec),
             pci: Some(pci),
         })
+    }
+
+    /// Check for IAS Warning (FIX-024)
+    ///
+    /// IAS is a "soft gate" that warns for moderate drift (0.30-0.69) instead of HALTing.
+    /// Only HALTs at extreme drift (< 0.30).
+    ///
+    /// Returns:
+    /// - Some(IASWarning) if IAS is in warning range (0.30-0.69)
+    /// - None if IAS is passing (≥ 0.70) or will HALT (< 0.30)
+    ///
+    /// Warning types:
+    /// - Step 4: ResynthesisPause (synthesis may have diverged from Charter)
+    /// - Other steps: AcknowledgmentRequired (drift needs acknowledgment)
+    pub fn check_ias_warning(&self, metrics: &CriticalMetrics, step: u8) -> Option<IASWarning> {
+        if let Some(ref ias) = metrics.ias {
+            if ias.value >= 0.30 && ias.value < 0.70 {
+                let warning_type = if step == 4 {
+                    IASWarningType::ResynthesisPause
+                } else {
+                    IASWarningType::AcknowledgmentRequired
+                };
+
+                return Some(IASWarning {
+                    score: ias.value,
+                    warning_type: warning_type.clone(),
+                    message: format!(
+                        "Intent drift detected (IAS: {:.2}). {}",
+                        ias.value,
+                        match warning_type {
+                            IASWarningType::ResynthesisPause =>
+                                "Synthesis may have diverged from Charter. Review before proceeding.",
+                            IASWarningType::AcknowledgmentRequired =>
+                                "Content may have drifted from original intent. Acknowledge to proceed.",
+                        }
+                    ),
+                });
+            }
+        }
+        None
     }
 
     // =============================================================================
@@ -653,43 +716,139 @@ Return JSON with counts."#,
         })
     }
 
-    /// Calculate EFI (Execution Fidelity Index)
+    /// Evaluate EFI status with step-specific enforcement (FIX-025)
     ///
-    /// Audits claims for evidence support.
-    /// Returns percentage of substantiated claims.
+    /// EFI (Evidence Fidelity Index) has different enforcement levels at different steps:
+    /// - Steps 1-3: Informational only (always Pass) - early steps don't need evidence yet
+    /// - Step 4: Warning only - synthesis should start building evidence
+    /// - Step 5: Informational only (always Pass) - framework may not have all evidence yet
+    /// - Step 6: Full enforcement - validation requires complete evidence
+    ///
+    /// # Arguments
+    /// * `score` - EFI score (0.0-1.0, percentage of scored claims substantiated)
+    /// * `step` - Current Method-VI step (1-6)
+    ///
+    /// # Returns
+    /// MetricStatus based on score and step-specific enforcement
+    fn evaluate_efi_status(&self, score: f64, step: u8) -> MetricStatus {
+        if step == 6 {
+            // Step 6: Full enforcement - validation requires evidence
+            if score >= 0.80 {
+                MetricStatus::Pass
+            } else if score >= 0.50 {
+                MetricStatus::Warning
+            } else {
+                MetricStatus::Fail  // Will HALT
+            }
+        } else if step == 4 {
+            // Step 4: Warning only - synthesis should start building evidence
+            if score >= 0.80 {
+                MetricStatus::Pass
+            } else {
+                MetricStatus::Warning  // Never Fail before Step 6
+            }
+        } else {
+            // Steps 1-3, 5: Informational only
+            MetricStatus::Pass  // Always pass, just log the value
+        }
+    }
+
+    /// Calculate EFI (Execution Fidelity Index) with Claim Taxonomy (FIX-025)
+    ///
+    /// Audits claims for evidence support using a claim taxonomy:
+    /// - SCORED claims (factual, prescriptive) require evidence
+    /// - EXEMPT claims (exploratory, instructional, observational) do not
+    ///
+    /// This prevents false failures on workshop/training content where
+    /// instructional statements like "Good leaders listen" are exempt from
+    /// evidence requirements.
+    ///
+    /// Returns 0.0-1.0 score (percentage of scored claims substantiated).
+    /// If no scored claims exist, returns 1.0 (perfect score).
     async fn calculate_efi(&self, content: &str, step: u8) -> Result<MetricResult> {
-        debug!("Calculating EFI (Execution Fidelity Index)");
+        debug!("Calculating EFI (Evidence Fidelity Index) for Step {} with claim taxonomy", step);
 
-        let system_prompt = "You are an execution fidelity auditor for Method-VI governance. \
-            Count claims in content and determine what percentage have supporting evidence. \
-            Return ONLY a JSON object with this exact structure: \
-            {\"percentage\": <number 0-100>, \"total_claims\": <number>, \"substantiated_claims\": <number>, \"reasoning\": \"<explanation>\"}";
+        let system_prompt = r#"You are an evidence fidelity analyst. Your task is to:
+1. Identify all claims in the content
+2. Classify each claim by type using the claim taxonomy
+3. For SCORED claims only, determine if evidence is provided
+4. Calculate EFI based only on scored claims
 
-        let user_message = format!(
-            "Audit this content for execution fidelity:\n\n{}\n\n\
-            Count:\n\
-            1. Total claims made\n\
-            2. Claims with supporting evidence\n\
-            Return percentage substantiated (0-100).",
-            content
-        );
+Return ONLY valid JSON."#;
+
+        let user_message = format!(r#"
+Analyze the following content for evidence fidelity.
+
+CLAIM TAXONOMY:
+
+SCORED CLAIMS (require evidence):
+- FACTUAL: Assertions about verifiable reality
+  Example: "AI adoption increased 40% in 2024"
+- PRESCRIPTIVE: Recommendations with implied outcomes
+  Example: "Companies should implement AI governance to reduce risk"
+
+EXEMPT CLAIMS (do not require evidence):
+- EXPLORATORY: Questions, hypotheses, possibilities
+  Example: "What if we considered a phased approach?"
+- INSTRUCTIONAL: Teaching statements, definitions, explanations
+  Example: "A neural network consists of interconnected nodes"
+- OBSERVATIONAL: Descriptions of what exists without causal claims
+  Example: "The current process has five steps"
+
+INSTRUCTIONS:
+1. List each claim in the content
+2. Classify as: FACTUAL, PRESCRIPTIVE, EXPLORATORY, INSTRUCTIONAL, or OBSERVATIONAL
+3. For FACTUAL and PRESCRIPTIVE claims only: Is evidence provided? (yes/no)
+4. Calculate EFI = (Substantiated Scored Claims) / (Total Scored Claims)
+   - If zero scored claims, EFI = 1.0 (no claims requiring evidence)
+
+Respond in JSON:
+{{
+  "claims": [
+    {{
+      "text": "...",
+      "type": "FACTUAL|PRESCRIPTIVE|EXPLORATORY|INSTRUCTIONAL|OBSERVATIONAL",
+      "scored": true|false,
+      "substantiated": true|false|null,
+      "evidence_reference": "..." or null
+    }}
+  ],
+  "summary": {{
+    "total_claims": N,
+    "scored_claims": N,
+    "substantiated_scored": N,
+    "efi_score": X.XX
+  }},
+  "reasoning": "One sentence explanation"
+}}
+
+CONTENT:
+---
+{}
+---
+"#, content);
 
         let response = self.api_client
-            .call_claude(system_prompt, &user_message, None, Some(1024), Some(0.0))
+            .call_claude(&system_prompt, &user_message, None, Some(4096), Some(0.0))
             .await?;
 
+        // Parse and validate
         let parsed: serde_json::Value = self.extract_json(&response)
             .context(format!("Failed to parse EFI response as JSON. Raw response: {}", &response[..response.len().min(200)]))?;
 
-        let percentage = parsed["percentage"]
+        let efi_score = parsed["summary"]["efi_score"]
             .as_f64()
-            .context("Missing or invalid 'percentage' field in EFI response")?;
+            .unwrap_or(1.0);  // Default to 1.0 if no scored claims
 
-        let total_claims = parsed["total_claims"]
+        let total_claims = parsed["summary"]["total_claims"]
             .as_u64()
             .unwrap_or(0);
 
-        let substantiated = parsed["substantiated_claims"]
+        let scored_claims = parsed["summary"]["scored_claims"]
+            .as_u64()
+            .unwrap_or(0);
+
+        let substantiated_scored = parsed["summary"]["substantiated_scored"]
             .as_u64()
             .unwrap_or(0);
 
@@ -698,32 +857,50 @@ Return JSON with counts."#,
             .unwrap_or("No reasoning provided")
             .to_string();
 
-        let status = self.evaluate_status(percentage, &self.thresholds.efi, false);
+        // Log for debugging
+        info!(
+            "EFI Calculation (Step {}): {} total claims, {} scored claims, {} substantiated, score = {:.2}",
+            step, total_claims, scored_claims, substantiated_scored, efi_score
+        );
+
+        // Use step-specific enforcement
+        let status = self.evaluate_efi_status(efi_score, step);
 
         Ok(MetricResult {
             metric_name: "EFI".to_string(),
-            value: percentage,
+            value: efi_score,
             threshold: self.thresholds.efi.clone(),
             status: status.clone(),
             inputs_used: vec![
                 MetricInput {
                     name: "Total Claims".to_string(),
                     value: MetricInputValue::Number(total_claims as f64),
-                    source: "Current Content".to_string(),
+                    source: "Content Analysis".to_string(),
                 },
                 MetricInput {
-                    name: "Substantiated Claims".to_string(),
-                    value: MetricInputValue::Number(substantiated as f64),
-                    source: "Current Content".to_string(),
+                    name: "Scored Claims".to_string(),
+                    value: MetricInputValue::Number(scored_claims as f64),
+                    source: "Claim Taxonomy Filter".to_string(),
+                },
+                MetricInput {
+                    name: "Substantiated Scored Claims".to_string(),
+                    value: MetricInputValue::Number(substantiated_scored as f64),
+                    source: "Evidence Analysis".to_string(),
                 },
             ],
-            calculation_method: format!(
-                "{} substantiated / {} total claims × 100 = {:.1}%",
-                substantiated, total_claims, percentage
-            ),
+            calculation_method: if scored_claims > 0 {
+                format!(
+                    "Claim Taxonomy: {} substantiated / {} scored claims = {:.2}",
+                    substantiated_scored, scored_claims, efi_score
+                )
+            } else {
+                "No scored claims (instructional/exploratory content) = 1.0".to_string()
+            },
             interpretation: reasoning,
-            recommendation: if status != MetricStatus::Pass {
-                Some("Add evidence and citations to support claims. Increase rigor of substantiation.".to_string())
+            recommendation: if status == MetricStatus::Fail {
+                Some("Add evidence and citations to support factual and prescriptive claims. Increase rigor of substantiation.".to_string())
+            } else if status == MetricStatus::Warning {
+                Some("Consider adding more evidence for factual and prescriptive claims to improve credibility.".to_string())
             } else {
                 None
             },
@@ -953,13 +1130,14 @@ Return JSON with counts."#,
             }
         }
 
-        // EFI - evaluated at Step 6 ONLY
+        // EFI - evaluated at Step 6 ONLY (FIX-025)
         // FIX-008/FIX-009: Early steps (0-5) may have low EFI (e.g., Charter is governance, not evidence)
         // but this shouldn't block progression before validation
+        // FIX-025: Uses claim taxonomy - only scored claims require evidence
         if step == 6 {
             if let Some(ref efi) = metrics.efi {
                 if efi.status == MetricStatus::Fail {
-                    halt_reasons.push(format!("EFI critically low: {:.1}%", efi.value));
+                    halt_reasons.push(format!("EFI insufficient evidence: {:.0}% of scored claims substantiated", efi.value * 100.0));
                 }
             }
         }
