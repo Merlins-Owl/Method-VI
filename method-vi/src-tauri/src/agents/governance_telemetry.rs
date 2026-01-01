@@ -699,32 +699,37 @@ Return JSON with counts."#,
     }
 
     // =============================================================================
-    // EV (Entropy Variance) - PHASE 2 IMPLEMENTATION REQUIRED
+    // EV (Entropy Variance) - INFORMATIONAL ONLY (FIX-027)
     // =============================================================================
     //
-    // Current Status: Calculated for display only, does NOT trigger HALT
+    // Status: NEVER triggers HALT or Warning - purely informational for calibration
     //
-    // MVP Limitation:
-    // - Uses word count comparison (incorrect)
-    // - Causes false HALTs because content size naturally varies by step
+    // MVP Implementation:
+    // - Uses LLM-based entropy estimation (concepts + relationships + decision_points)
+    // - Calculated and logged for calibration data collection
+    // - Always returns Pass status (never blocks progression)
     //
-    // Phase 2 Requirements:
-    // 1. Implement proper entropy formula per spec §9.1.2:
-    //    E = (Unique_Concepts + Defined_Relationships + Decision_Points) / Content_Units
-    // 2. Use LLM-based estimation to count concepts, relationships, decision points
-    // 3. Calibrate thresholds with real run data
-    // 4. Consider step-specific expected variance ranges:
+    // Rationale:
+    // - Entropy variance is expected across steps (analysis expands, synthesis condenses)
+    // - No calibration data exists yet to set meaningful thresholds
+    // - Metric useful for observing patterns but not enforcing constraints
+    //
+    // Phase 2 Considerations:
+    // 1. Collect EV data across multiple runs to establish baseline patterns
+    // 2. Analyze step-specific variance ranges:
     //    - Step 2 (Charter): Should match input entropy closely
-    //    - Step 3 (Analysis): Entropy typically increases (more concepts introduced)
-    //    - Step 4 (Synthesis): Entropy may decrease (concepts consolidated)
+    //    - Step 3 (Analysis): Entropy typically increases (more concepts)
+    //    - Step 4 (Synthesis): Entropy may decrease (consolidation)
     //    - Step 5 (Framework): Entropy typically increases (detailed implementation)
-    // 5. Re-enable HALT checks once properly calibrated
+    // 3. Consider if enforcement is valuable (may remain informational permanently)
     //
     // =============================================================================
 
-    /// Calculate EV (Expansion Variance)
+    /// Calculate EV (Expansion Variance) - FIX-027
     ///
-    /// Per spec §9.1.2, measures entropy variance from baseline:
+    /// INFORMATIONAL ONLY - Never triggers HALT or Warning
+    ///
+    /// Measures entropy variance from baseline:
     /// EV = ((E_current - E_baseline) / E_baseline) × 100%
     async fn calculate_ev(&self, content: &str) -> Result<MetricResult> {
         debug!("Calculating EV (Expansion Variance)");
@@ -740,7 +745,10 @@ Return JSON with counts."#,
         // Formula: |E_current - E_baseline| / E_baseline × 100
         let variance = ((e_current - e_baseline).abs() / e_baseline) * 100.0;
 
-        let status = self.evaluate_status(variance, &self.thresholds.ev, true); // Inverse: lower is better
+        // FIX-027: Always Pass - informational only, never blocks
+        let status = MetricStatus::Pass;
+
+        info!("EV calculated: {:.1}% variance (informational only - not enforced)", variance);
 
         Ok(MetricResult {
             metric_name: "EV".to_string(),
@@ -764,17 +772,12 @@ Return JSON with counts."#,
                 e_current, e_baseline, e_baseline, variance
             ),
             interpretation: format!(
-                "Content has {:.1}% entropy variance from baseline ({}±10% is target). Current: {:.2}, Baseline: {:.2}.",
+                "Content has {:.1}% entropy variance from baseline (informational only - not enforced). Current: {:.2}, Baseline: {:.2}.",
                 variance,
-                if variance < 10.0 { "PASS" } else if variance < 20.0 { "WARNING" } else { "FAIL" },
                 e_current,
                 e_baseline
             ),
-            recommendation: if status != MetricStatus::Pass {
-                Some("Entropy deviates significantly from baseline. Review scope creep or over-compression.".to_string())
-            } else {
-                None
-            },
+            recommendation: Some("Informational metric for calibration data collection. No action required.".to_string()),
         })
     }
 
@@ -1030,59 +1033,27 @@ CONTENT:
         })
     }
 
-    /// Calculate SEC (Scope Expansion Count)
+    /// Calculate SEC (Scope Expansion Count) - FIX-027
     ///
-    /// Counts approved vs undocumented scope changes.
-    /// Returns compliance percentage.
+    /// PLACEHOLDER FOR MVP - Always returns 100%
+    ///
+    /// Scope change detection not implemented. Always assumes perfect compliance.
     fn calculate_sec(&self) -> Result<MetricResult> {
-        debug!("Calculating SEC (Scope Expansion Count)");
+        debug!("Calculating SEC (Scope Expansion Count) - placeholder");
 
-        // MVP: Always returns 100 (no scope expansions yet)
-        // TODO: Track scope expansions in ledger and count them here
-        let approved_expansions = 0;
-        let undocumented_expansions = 0;
-        let total_expansions = approved_expansions + undocumented_expansions;
-
-        let compliance_percentage = if total_expansions == 0 {
-            100.0 // No expansions = perfect compliance
-        } else {
-            (approved_expansions as f64 / total_expansions as f64) * 100.0
-        };
-
-        let status = self.evaluate_status(compliance_percentage, &self.thresholds.sec, false);
+        // FIX-027: SEC is placeholder for MVP - always returns 100%
+        // Scope detection not implemented
+        info!("SEC: Placeholder returning 100% (scope detection not implemented)");
 
         Ok(MetricResult {
             metric_name: "SEC".to_string(),
-            value: compliance_percentage,
+            value: 100.0,  // Always 100% for MVP
             threshold: self.thresholds.sec.clone(),
-            status: status.clone(),
-            inputs_used: vec![
-                MetricInput {
-                    name: "Approved Scope Expansions".to_string(),
-                    value: MetricInputValue::Number(approved_expansions as f64),
-                    source: "Ledger".to_string(),
-                },
-                MetricInput {
-                    name: "Undocumented Scope Expansions".to_string(),
-                    value: MetricInputValue::Number(undocumented_expansions as f64),
-                    source: "Ledger".to_string(),
-                },
-            ],
-            calculation_method: format!(
-                "{} approved / {} total scope changes × 100 = {:.0}%",
-                approved_expansions, total_expansions, compliance_percentage
-            ),
-            interpretation: format!(
-                "Scope compliance: {}%. {} approved, {} undocumented expansions.",
-                compliance_percentage.round(),
-                approved_expansions,
-                undocumented_expansions
-            ),
-            recommendation: if status != MetricStatus::Pass {
-                Some("Document all scope expansions and seek approval before proceeding.".to_string())
-            } else {
-                None
-            },
+            status: MetricStatus::Pass,  // Always Pass
+            inputs_used: vec![],  // No inputs - placeholder
+            calculation_method: "Placeholder (always 100% - scope detection not implemented)".to_string(),
+            interpretation: "Scope detection not implemented for MVP. Assumed compliant (100%).".to_string(),
+            recommendation: Some("Future enhancement: Implement scope change detection and tracking in Steno-Ledger.".to_string()),
         })
     }
 
@@ -1442,10 +1413,10 @@ CONTENT:
     ///
     /// # Step-Specific Evaluation (per spec §9.1):
     /// - CI:  Steps 1, 2, 3, 4, 5, 6 (all steps)
-    /// - EV:  Steps 2, 3, 4, 5
-    /// - IAS: Steps 1, 2, 3, 4, 5, 6 (all steps)
-    /// - EFI: Step 6 ONLY
-    /// - SEC: Steps 1, 6 only
+    /// - EV:  NEVER (FIX-027: informational only)
+    /// - IAS: Steps 1, 2, 3, 4, 5, 6 (all steps, soft gate <0.30)
+    /// - EFI: Step 6 ONLY (FIX-025)
+    /// - SEC: NEVER (FIX-027: placeholder, always 100%)
     /// - PCI: Step 6 ONLY (FIX-026)
     pub fn check_halt_conditions(&self, metrics: &CriticalMetrics, step: u8) -> Option<String> {
         let mut halt_reasons = Vec::new();
@@ -1457,20 +1428,10 @@ CONTENT:
             }
         }
 
-        // TODO(Phase 2): Re-enable EV check with proper entropy calculation
-        // EV is disabled for MVP because:
-        // - Current implementation uses word count, not entropy per spec §9.1.2
-        // - Word count variance is expected across steps (analysis expands, synthesis condenses)
-        // - Proper formula: E = (Unique_Concepts + Defined_Relationships + Decision_Points) / Content_Units
-        // - Requires LLM-based entropy estimation and calibration data
-        //
-        // if step == 2 || step == 5 {
-        //     if let Some(ref ev) = metrics.ev {
-        //         if ev.status == MetricStatus::Fail {
-        //             halt_reasons.push(format!("EV outside tolerance: {:.1}%", ev.value));
-        //         }
-        //     }
-        // }
+        // EV - NEVER (FIX-027: informational only, never enforced)
+        // EV is purely informational for calibration data collection.
+        // Entropy variance is expected across steps and no meaningful thresholds exist yet.
+        // This metric may remain informational permanently.
 
         // IAS - evaluated at all steps (1-6)
         if let Some(ref ias) = metrics.ias {
@@ -1491,14 +1452,7 @@ CONTENT:
             }
         }
 
-        // SEC - evaluated at Steps 1 and 6 only
-        if step == 1 || step == 6 {
-            if let Some(ref sec) = metrics.sec {
-                if sec.status == MetricStatus::Fail {
-                    halt_reasons.push(format!("SEC violation: {:.1}%", sec.value));
-                }
-            }
-        }
+        // SEC - NEVER (FIX-027: placeholder, always 100%)
 
         // PCI - evaluated at Step 6 ONLY (FIX-026)
         // Process compliance is informational until validation
