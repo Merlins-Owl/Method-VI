@@ -1,0 +1,428 @@
+warning: variant `Intent_Anchor` should have an upper camel case name
+  --> src\spine\types.rs:12:5
+   |
+12 |     Intent_Anchor,
+   |     ^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `IntentAnchor`
+   |
+   = note: `#[warn(non_camel_case_types)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: variant `Core_Thesis` should have an upper camel case name
+  --> src\spine\types.rs:24:5
+   |
+24 |     Core_Thesis,
+   |     ^^^^^^^^^^^ help: convert the identifier to upper camel case: `CoreThesis`
+
+warning: variant `Governance_Summary` should have an upper camel case name
+  --> src\spine\types.rs:27:5
+   |
+27 |     Governance_Summary,
+   |     ^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `GovernanceSummary`
+
+warning: variant `Lens_Efficacy_Report` should have an upper camel case name
+  --> src\spine\types.rs:30:5
+   |
+30 |     Lens_Efficacy_Report,
+   |     ^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `LensEfficacyReport`
+
+warning: variant `Innovation_Notes` should have an upper camel case name
+  --> src\spine\types.rs:33:5
+   |
+33 |     Innovation_Notes,
+   |     ^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `InnovationNotes`
+
+warning: variant `Diagnostic_Summary` should have an upper camel case name
+  --> src\spine\types.rs:36:5
+   |
+36 |     Diagnostic_Summary,
+   |     ^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `DiagnosticSummary`
+
+warning: variant `Framework_Draft` should have an upper camel case name
+  --> src\spine\types.rs:39:5
+   |
+39 |     Framework_Draft,
+   |     ^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `FrameworkDraft`
+
+warning: unused imports: `Deserialize` and `Serialize`
+ --> src\agents\structure_redesign.rs:4:13
+  |
+4 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^  ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: ambiguous glob re-exports
+  --> src\commands\mod.rs:13:9
+   |
+13 | pub use step2::*;
+   |         ^^^^^^^^ the name `MetricsSnapshot` in the type namespace is first re-exported here
+...
+16 | pub use step5::*;
+   |         -------- but the name `MetricsSnapshot` in the type namespace is also re-exported here
+   |
+   = note: `#[warn(ambiguous_glob_reexports)]` on by default
+
+warning: function `database_exists` is never used
+  --> src\database\mod.rs:34:8
+   |
+34 | pub fn database_exists(app_handle: &tauri::AppHandle) -> Result<bool> {
+   |        ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `get_connection` is never used
+  --> src\database\mod.rs:69:8
+   |
+69 | pub fn get_connection(app_handle: &tauri::AppHandle) -> Result<Connection> {
+   |        ^^^^^^^^^^^^^^
+
+warning: struct `Run` is never constructed
+ --> src\database\models.rs:6:12
+  |
+6 | pub struct Run {
+  |            ^^^
+
+warning: struct `Artifact` is never constructed
+  --> src\database\models.rs:18:12
+   |
+18 | pub struct Artifact {
+   |            ^^^^^^^^
+
+warning: struct `SpineEdge` is never constructed
+  --> src\database\models.rs:32:12
+   |
+32 | pub struct SpineEdge {
+   |            ^^^^^^^^^
+
+warning: struct `Pattern` is never constructed
+  --> src\database\models.rs:41:12
+   |
+41 | pub struct Pattern {
+   |            ^^^^^^^
+
+warning: struct `LedgerEntry` is never constructed
+  --> src\database\models.rs:64:12
+   |
+64 | pub struct LedgerEntry {
+   |            ^^^^^^^^^^^
+
+warning: struct `PersistentFlaw` is never constructed
+  --> src\database\models.rs:78:12
+   |
+78 | pub struct PersistentFlaw {
+   |            ^^^^^^^^^^^^^^
+
+warning: function `get_schema_version` is never used
+   --> src\database\schema.rs:144:8
+    |
+144 | pub fn get_schema_version(conn: &Connection) -> Result<i32> {
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `create_run` is never used
+ --> src\database\runs.rs:6:8
+  |
+6 | pub fn create_run(conn: &Connection, run: &Run) -> Result<()> {
+  |        ^^^^^^^^^^
+
+warning: function `get_run` is never used
+  --> src\database\runs.rs:28:8
+   |
+28 | pub fn get_run(conn: &Connection, id: &str) -> Result<Option<Run>> {
+   |        ^^^^^^^
+
+warning: function `update_run` is never used
+  --> src\database\runs.rs:54:8
+   |
+54 | pub fn update_run(conn: &Connection, run: &Run) -> Result<()> {
+   |        ^^^^^^^^^^
+
+warning: function `delete_run` is never used
+  --> src\database\runs.rs:87:8
+   |
+87 | pub fn delete_run(conn: &Connection, id: &str) -> Result<()> {
+   |        ^^^^^^^^^^
+
+warning: function `list_runs` is never used
+   --> src\database\runs.rs:100:8
+    |
+100 | pub fn list_runs(conn: &Connection) -> Result<Vec<Run>> {
+    |        ^^^^^^^^^
+
+warning: function `get_active_runs` is never used
+   --> src\database\runs.rs:127:8
+    |
+127 | pub fn get_active_runs(conn: &Connection) -> Result<Vec<Run>> {
+    |        ^^^^^^^^^^^^^^^
+
+warning: function `get_completed_runs` is never used
+   --> src\database\runs.rs:154:8
+    |
+154 | pub fn get_completed_runs(conn: &Connection) -> Result<Vec<Run>> {
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `create_artifact` is never used
+ --> src\database\artifacts.rs:8:8
+  |
+8 | pub fn create_artifact(_conn: &Connection, _artifact: &Artifact) -> Result<()> {
+  |        ^^^^^^^^^^^^^^^
+
+warning: function `get_artifact` is never used
+  --> src\database\artifacts.rs:12:8
+   |
+12 | pub fn get_artifact(_conn: &Connection, _id: &str) -> Result<Option<Artifact>> {
+   |        ^^^^^^^^^^^^
+
+warning: function `list_artifacts_by_run` is never used
+  --> src\database\artifacts.rs:16:8
+   |
+16 | pub fn list_artifacts_by_run(_conn: &Connection, _run_id: &str) -> Result<Vec<Artifact>> {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `create_pattern` is never used
+ --> src\database\patterns.rs:8:8
+  |
+8 | pub fn create_pattern(_conn: &Connection, _pattern: &Pattern) -> Result<()> {
+  |        ^^^^^^^^^^^^^^
+
+warning: function `get_pattern` is never used
+  --> src\database\patterns.rs:12:8
+   |
+12 | pub fn get_pattern(_conn: &Connection, _id: &str) -> Result<Option<Pattern>> {
+   |        ^^^^^^^^^^^
+
+warning: function `list_patterns_by_category` is never used
+  --> src\database\patterns.rs:16:8
+   |
+16 | pub fn list_patterns_by_category(_conn: &Connection, _category: &str) -> Result<Vec<Pattern>> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_starter_patterns` is never used
+  --> src\database\patterns.rs:20:8
+   |
+20 | pub fn get_starter_patterns(_conn: &Connection) -> Result<Vec<Pattern>> {
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `create_ledger_entry` is never used
+ --> src\database\ledger.rs:8:8
+  |
+8 | pub fn create_ledger_entry(_conn: &Connection, _entry: &LedgerEntry) -> Result<()> {
+  |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_ledger_entry` is never used
+  --> src\database\ledger.rs:12:8
+   |
+12 | pub fn get_ledger_entry(_conn: &Connection, _id: i64) -> Result<Option<LedgerEntry>> {
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `list_ledger_entries_by_run` is never used
+  --> src\database\ledger.rs:16:8
+   |
+16 | pub fn list_ledger_entries_by_run(_conn: &Connection, _run_id: &str) -> Result<Vec<LedgerEntry>> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `create_spine_edge` is never used
+ --> src\database\spine.rs:8:8
+  |
+8 | pub fn create_spine_edge(_conn: &Connection, _edge: &SpineEdge) -> Result<()> {
+  |        ^^^^^^^^^^^^^^^^^
+
+warning: function `get_spine_edges_for_artifact` is never used
+  --> src\database\spine.rs:12:8
+   |
+12 | pub fn get_spine_edges_for_artifact(_conn: &Connection, _artifact_id: &str) -> Result<Vec<SpineEdge>> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `delete_spine_edge` is never used
+  --> src\database\spine.rs:16:8
+   |
+16 | pub fn delete_spine_edge(_conn: &Connection, _source_id: &str, _target_id: &str) -> Result<()> {
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `create_flaw` is never used
+ --> src\database\flaws.rs:8:8
+  |
+8 | pub fn create_flaw(_conn: &Connection, _flaw: &PersistentFlaw) -> Result<()> {
+  |        ^^^^^^^^^^^
+
+warning: function `get_flaw` is never used
+  --> src\database\flaws.rs:12:8
+   |
+12 | pub fn get_flaw(_conn: &Connection, _id: i64) -> Result<Option<PersistentFlaw>> {
+   |        ^^^^^^^^
+
+warning: function `list_open_flaws` is never used
+  --> src\database\flaws.rs:16:8
+   |
+16 | pub fn list_open_flaws(_conn: &Connection) -> Result<Vec<PersistentFlaw>> {
+   |        ^^^^^^^^^^^^^^^
+
+warning: function `update_flaw_occurrence` is never used
+  --> src\database\flaws.rs:20:8
+   |
+20 | pub fn update_flaw_occurrence(_conn: &Connection, _id: i64) -> Result<()> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `MessageContent` is never constructed
+  --> src\api\anthropic.rs:21:8
+   |
+21 | struct MessageContent {
+   |        ^^^^^^^^^^^^^^
+
+warning: field `content_type` is never read
+  --> src\api\anthropic.rs:57:5
+   |
+55 | struct ResponseContent {
+   |        --------------- field in this struct
+56 |     #[serde(rename = "type")]
+57 |     content_type: String,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ResponseContent` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `id`, `response_type`, and `role` are never read
+  --> src\api\anthropic.rs:64:5
+   |
+63 | struct ClaudeResponse {
+   |        -------------- fields in this struct
+64 |     id: String,
+   |     ^^
+65 |     #[serde(rename = "type")]
+66 |     response_type: String,
+   |     ^^^^^^^^^^^^^
+67 |     role: String,
+   |     ^^^^
+   |
+   = note: `ClaudeResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: `method-vi` (lib) generated 45 warnings (run `cargo fix --lib -p method-vi` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.48s
+     Running tests\test_metrics.rs (target\debug\deps\test_metrics-fb8c51a0162a0240.exe)
+=== Method-VI Governance & Telemetry Agent Test ===
+
+1. Initializing Governance & Telemetry Agent...
+   ✓ Agent initialized
+
+2. Calculating E_baseline from baseline content...
+   E_baseline: 10.75 words
+   ✓ E_baseline locked at Step 1
+
+3. Calculating Critical 6 Metrics for Step 3...
+
+================================================================================
+METRIC RESULTS
+================================================================================
+
+📊 CI - Coherence Index
+   Value: 0.84
+   Status: Pass
+   Threshold: Pass ≥0.70, Warning ≥0.50, Fail <0.50
+
+   Inputs Used:
+      • Step = Number(3.0) (from Orchestrator)
+      • Logical Flow = Number(0.85) (from LLM (50% weight))
+      • Term Consistency = Number(0.9) (from LLM (15% weight))
+      • Sentence Clarity = Number(0.8) (from LLM (30% weight))
+      • Structure Consistency = Number(0.95) (from LLM (5% weight))
+
+   Calculation Method:
+      Step-semantic weighted CI (Step 3 - Multi-Angle Analysis): Flow=0.85×0.50 + Term=0.90×0.15 + Clarity=0.80×0.30 + Structure=0.95×0.05 = 0.84
+
+   Interpretation:
+      Well-structured technical analysis with clear logical flow and consistent terminology, though some sentences could be simplified for better accessibility.
+
+📊 EV - Expansion Variance
+   Value: 72.8%
+   Status: Fail
+   Threshold: Pass ≤10%, Warning ≤20%, Fail >30%
+
+   Inputs Used:
+      • E_current = Number(2.9285714285714284) (from Current Content)
+      • E_baseline = Number(10.75) (from Baseline Report)
+
+   Calculation Method:
+      |E_current - E_baseline| / E_baseline × 100 = |2.93 - 10.75| / 10.75 × 100 = 72.76%
+
+   Interpretation:
+      Content has 72.8% entropy variance from baseline (FAIL±10% is target). Current: 2.93, Baseline: 10.75.
+
+   ⚠️  Recommendation:
+      Entropy deviates significantly from baseline. Review scope creep or over-compression.
+
+📊 IAS - Intent Alignment Score
+   Value: 0.90
+   Status: Pass
+   Threshold: Pass ≥0.70, Warning ≥0.30, Fail <0.30
+
+   Inputs Used:
+      • Charter Objectives (from Charter)
+
+   Calculation Method:
+      LLM-based comparison of content against Charter objectives
+
+   Interpretation:
+      Excellent alignment with Charter objectives. Content directly addresses microservices migration (Obj 1) with detailed 6-service decomposition, exceeds performance targets with 62% improvement vs 50% required (Obj 2), implements comprehensive monitoring via Prometheus/Grafana (Obj 4), and enables hourly deployments exceeding the weeks-to-hours requirement (Obj 5). Only minor gap is lack of explicit UI/UX modernization details (Obj 3), though modern deployment practices are covered. Technical approach is thorough and well-structured.
+
+📊 EFI - Evidence Fidelity Index
+   Value: 0.00 (0% of scored claims substantiated)
+   Status: Pass
+   Threshold: Pass ≥0.80, Warning ≥0.50, Fail <0.50
+
+   Inputs Used:
+      • Total Claims = Number(14.0) (from Content Analysis)
+      • Scored Claims = Number(10.0) (from Claim Taxonomy Filter)
+      • Substantiated Scored Claims = Number(0.0) (from Evidence Analysis)
+
+   Calculation Method:
+      Claim Taxonomy: 0 substantiated / 10 scored claims = 0.00
+
+   Interpretation:
+      All factual claims about performance metrics and prescriptive recommendations lack supporting evidence, data sources, or justification.
+
+📊 SEC - Scope Expansion Count
+   Value: 100%
+   Status: Pass
+   Threshold: Pass =100%
+
+   Inputs Used:
+      • Approved Scope Expansions = Number(0.0) (from Ledger)
+      • Undocumented Scope Expansions = Number(0.0) (from Ledger)
+
+   Calculation Method:
+      0 approved / 0 total scope changes × 100 = 100%
+
+   Interpretation:
+      Scope compliance: 100%. 0 approved, 0 undocumented expansions.
+
+📊 PCI - Process Compliance Index
+   Value: 0.88
+   Status: Warning
+   Threshold: Pass ≥0.95, Warning ≥0.70, Fail <0.70
+
+   Inputs Used:
+      • Step Sequence (3/3) = String("100%") (from Process Audit)
+      • Gate Compliance (3/4) = String("75%") (from Process Audit)
+      • Artifact Presence (3/4) = String("75%") (from Process Audit)
+      • Audit Integrity (3/3) = String("100%") (from Process Audit)
+
+   Calculation Method:
+      Deterministic checklist audit (4 categories: Step Sequence 25%, Gate Compliance 30%, Artifact Presence 20%, Audit Integrity 25%)
+
+   Interpretation:
+      Process compliance: 88%. Failed checks: Gate Compliance: synthesis_approval, Artifact Presence: diagnostic_exists
+
+   ⚠️  Recommendation:
+      Obtain Synthesis approval at Step 4 gate; Generate all required artifacts for this step
+
+================================================================================
+SUMMARY
+================================================================================
+
+   ✓ Pass: 4
+   ⚠ Warning: 1
+   ✕ Fail: 1
+
+4. Checking HALT/PAUSE conditions...
+   ⏸️  PAUSE RECOMMENDED: PAUSE: Metrics need attention: PCI below target: 0.88
+
+================================================================================
+✅ TEST COMPLETE - All metrics calculated successfully!
+================================================================================
