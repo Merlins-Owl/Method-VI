@@ -50,6 +50,7 @@ async fn main() {
             "Hello, respond with just 'Hello human!'",
             None,  // Use default model (claude-sonnet-4-20250514)
             Some(20),  // Keep max_tokens low to minimize cost
+            None,  // Use default temperature
         )
         .await
     {

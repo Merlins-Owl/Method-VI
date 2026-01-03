@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
+import { calloutApi } from '../utils/calloutApi';
 import MainLayout from '../components/layout/MainLayout';
 import Step0View from '../components/steps/Step0View';
 import Step1View from '../components/steps/Step1View';
@@ -42,6 +43,18 @@ export default function RunView() {
 
   const handleGateReached = async (summary: IntentSummary) => {
     console.log('[RunView] Gate reached with summary:', summary);
+
+    // Check if critical callouts have been acknowledged
+    try {
+      const canProceed = await calloutApi.canProceed();
+      if (!canProceed) {
+        alert('Please acknowledge Critical callouts before proceeding');
+        return;
+      }
+    } catch (error) {
+      console.error('[RunView] Failed to check can_proceed:', error);
+      // Continue anyway if check fails (fail-open to prevent blocking)
+    }
 
     // Show a confirmation dialog (or use the built-in approval flow)
     const confirmed = window.confirm(

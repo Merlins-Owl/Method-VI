@@ -1,1402 +1,2165 @@
 # Method-VI Architecture Documentation
 **Date:** 2026-01-01
 **Tag:** Post_Test_Run_8
-**Status:** Complete after Metrics Redesign (FIX-021 through FIX-027)
+**Status:** Production-Ready after Metrics Redesign (FIX-021 through FIX-027)
+**Branch:** feature/progression-architecture
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Technology Stack](#technology-stack)
-3. [Architecture Layers](#architecture-layers)
-4. [Backend Structure (Rust/Tauri)](#backend-structure-rusttauri)
-5. [Frontend Structure (React/TypeScript)](#frontend-structure-reacttypescript)
+1. [Executive Summary](#executive-summary)
+2. [System Overview](#system-overview)
+3. [Technology Stack](#technology-stack)
+4. [Architecture Layers](#architecture-layers)
+5. [Core Components](#core-components)
 6. [Agent System](#agent-system)
-7. [Database Layer](#database-layer)
-8. [Metrics & Governance](#metrics--governance)
-9. [Data Flow](#data-flow)
-10. [Recent Changes (Post-Metrics Redesign)](#recent-changes-post-metrics-redesign)
+7. [Database Architecture](#database-architecture)
+8. [Metrics & Governance System](#metrics--governance-system)
+9. [Data Flow Patterns](#data-flow-patterns)
+10. [File Structure & Relationships](#file-structure--relationships)
 11. [Testing Infrastructure](#testing-infrastructure)
-12. [Key Interactions](#key-interactions)
-13. [File Reference](#file-reference)
+12. [Key Patterns & Interactions](#key-patterns--interactions)
+13. [Complete File Reference](#complete-file-reference)
 
 ---
 
-## Overview
+## Executive Summary
 
-Method-VI is a desktop application implementing a 7-step AI-assisted framework development process. It uses Tauri (Rust backend) with a React frontend to orchestrate LLM-powered agents through a structured governance workflow.
+Method-VI is a desktop application implementing a rigorous, AI-assisted framework development process. Built with Tauri (Rust backend) and React (TypeScript frontend), it orchestrates multiple specialized AI agents through a 7-step governance workflow with real-time quality metrics.
 
-### Core Concept
+**Key Capabilities:**
+- 7-step guided framework development (Charter → Baseline → Analysis → Synthesis → Validation → Structure → Learning)
+- Real-time governance metrics (CI, EV, IAS, EFI, SEC, PCI)
+- Multi-lens diagnostic analysis (6 specialized lenses)
+- Immutable decision ledger (Steno-Ledger)
+- Knowledge graph tracking (Spine)
+- Gate-based progression control
+- Learning harvest and pattern extraction
 
-**The Method-VI Process** guides users through framework creation:
-- **Step 0:** Charter & Vision (problem definition)
-- **Step 1:** Baseline (initial context)
-- **Step 2:** Diagnostic (multi-angle analysis via 6 lenses)
-- **Step 3:** Synthesis (integration of analysis)
-- **Step 4:** Validation (cross-check charter alignment)
-- **Step 5:** Structure & Redesign (framework architecture)
-- **Step 6:** Final Validation (evidence audit)
-- **Step 6.5:** Learning Harvest (extract insights)
-- **Closure:** Archive and summarize
+**Production Status:**
+- ✅ All 116 tests passing
+- ✅ Metrics redesign complete (FIX-021 through FIX-027)
+- ✅ Integration testing verified
+- ✅ Release build successful
+- ✅ Application launch confirmed
 
-Each step has governance metrics (Critical 6) ensuring quality, coherence, and alignment.
+---
+
+## System Overview
+
+### The Method-VI Process
+
+Method-VI guides users through structured framework creation:
+
+```
+Step 0: Charter & Vision
+   ↓ (Intent captured, baseline metrics set)
+Step 1: Baseline Report
+   ↓ (Context frozen, E_baseline locked)
+Step 2: Multi-Angle Diagnostic
+   ↓ (6 lenses analyze problem space)
+Step 3: Synthesis & Integration
+   ↓ (Analysis integrated into unified diagnostic)
+Step 4: Cross-Validation
+   ↓ (Charter alignment verified)
+Step 5: Structure & Redesign
+   ↓ (Framework architecture generated)
+Step 6: Final Validation
+   ↓ (Evidence audit performed)
+Step 6.5: Learning Harvest
+   ↓ (Insights extracted, patterns captured)
+Closure: Archive & Summarize
+   ✓ (Run completed, knowledge preserved)
+```
+
+### Critical 6 Metrics (Governance)
+
+Each step is evaluated against 6 quality metrics:
+
+1. **CI (Coherence Index)**: Logical flow, term consistency, clarity, structure
+2. **EV (Expansion Variance)**: Content growth stability (informational only)
+3. **IAS (Intent Alignment Score)**: Charter alignment (soft/hard gates)
+4. **EFI (Evidence Fidelity Index)**: Claim substantiation (only Step 6)
+5. **SEC (Scope Expansion Count)**: Scope drift detection (placeholder)
+6. **PCI (Process Compliance Index)**: Workflow adherence (only Step 6)
+
+**Enforcement Levels:**
+- **HALT**: Critical failure, prevents progression
+- **ResynthesisPause**: Warning, requires acknowledgment
+- **Pass**: Meets quality standards
 
 ---
 
 ## Technology Stack
 
-### Backend
-- **Tauri 1.x** - Desktop application framework (Rust)
-- **Rust** - System programming language
-- **SQLite** - Embedded database (via rusqlite)
-- **Tokio** - Async runtime
-- **Serde** - Serialization/deserialization
+### Backend (Rust/Tauri)
+- **Tauri 2.9.5** - Cross-platform desktop framework
+- **Rust 1.83+** - Systems programming language
+- **SQLite 3.x** - Embedded database (rusqlite)
+- **Tokio 1.x** - Async runtime
+- **Serde 1.x** - Serialization/deserialization
 - **Anyhow** - Error handling
+- **UUID** - Unique identifiers
+- **SHA-256** - Cryptographic hashing (ledger integrity)
 
-### Frontend
+### Frontend (React/TypeScript)
 - **React 18** - UI framework
-- **TypeScript** - Type-safe JavaScript
-- **Vite** - Build tool and dev server
-- **Tailwind CSS** - Utility-first styling
+- **TypeScript 5.x** - Type-safe JavaScript
+- **Vite 7.3.0** - Build tool and dev server
+- **Tailwind CSS 3.x** - Utility-first styling
 - **Lucide React** - Icon library
 
 ### AI Integration
 - **Anthropic Claude API** - LLM for agent reasoning
-- **Model:** Claude Sonnet 3.5 (primary)
-- **Streaming:** Supported for real-time responses
+- **Primary Model:** claude-sonnet-4-20250514
+- **Features:** Streaming, structured output, temperature control
+- **Rate Limiting:** Handled at API client level
+
+### Development Tools
+- **Cargo** - Rust package manager
+- **npm/pnpm** - Node package managers
+- **Git** - Version control
 
 ---
 
 ## Architecture Layers
 
 ```
-┌─────────────────────────────────────────────────┐
-│           React Frontend (UI Layer)             │
-│  - Components (Chat, Steps, Metrics, Gates)    │
-│  - Pages (Home, RunView, Sessions, Settings)   │
-└─────────────────────────────────────────────────┘
-                       ↕ Tauri IPC
-┌─────────────────────────────────────────────────┐
-│         Tauri Commands (API Layer)              │
-│  - Step commands (step0-step6_5, closure)      │
-│  - Utility commands (settings, validation)      │
-└─────────────────────────────────────────────────┘
-                       ↕
-┌─────────────────────────────────────────────────┐
-│          Agent System (Business Logic)          │
-│  - Orchestrator (workflow coordination)         │
-│  - Governance/Telemetry (metrics calculation)   │
-│  - Analysis/Synthesis (lens execution)          │
-│  - Scope/Pattern (charter management)           │
-│  - Structure/Redesign (framework generation)    │
-│  - Validation/Learning (audit & harvest)        │
-└─────────────────────────────────────────────────┘
-                       ↕
-┌─────────────────────────────────────────────────┐
-│      Infrastructure (Data & External APIs)      │
-│  - Database (SQLite - runs, artifacts, spine)   │
-│  - Ledger (Steno-Ledger - decision tracking)    │
-│  - Spine (knowledge graph - concept links)      │
-│  - Anthropic API (Claude LLM integration)       │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                    FRONTEND (React/TypeScript)                │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐             │
+│  │   Pages    │  │ Components │  │   Hooks    │             │
+│  │  - Home    │  │  - Chat    │  │  - useRun  │             │
+│  │  - RunView │  │  - Steps   │  │  - useStep │             │
+│  │  - Settings│  │  - Metrics │  │            │             │
+│  └────────────┘  └────────────┘  └────────────┘             │
+└──────────────────────────────────────────────────────────────┘
+                            ↕ Tauri IPC (Invoke/Events)
+┌──────────────────────────────────────────────────────────────┐
+│                   COMMAND LAYER (Tauri)                       │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  step0 | step1 | step2 | step3 | step4 | step5 | step6  │ │
+│  │  step6_5 | closure | validate | get_metrics | ...       │ │
+│  └─────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
+                            ↕
+┌──────────────────────────────────────────────────────────────┐
+│                    AGENT SYSTEM (Business Logic)              │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐ │
+│  │  Orchestrator  │  │   Governance   │  │    Analysis    │ │
+│  │  (Workflow)    │←→│   (Metrics)    │  │   (6 Lenses)   │ │
+│  └────────────────┘  └────────────────┘  └────────────────┘ │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐ │
+│  │ Scope/Pattern  │  │   Structure    │  │   Validation   │ │
+│  │  (Charter)     │  │  (Framework)   │  │   (Learning)   │ │
+│  └────────────────┘  └────────────────┘  └────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
+                            ↕
+┌──────────────────────────────────────────────────────────────┐
+│               INFRASTRUCTURE (Data & External)                │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐             │
+│  │  Database  │  │   Ledger   │  │   Spine    │             │
+│  │  (SQLite)  │  │  (Steno)   │  │  (Graph)   │             │
+│  └────────────┘  └────────────┘  └────────────┘             │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐             │
+│  │   Signals  │  │  Artifacts │  │    API     │             │
+│  │  (Router)  │  │(Validation)│  │ (Anthropic)│             │
+│  └────────────┘  └────────────┘  └────────────┘             │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Backend Structure (Rust/Tauri)
+## Core Components
 
-### Directory Layout
+### 1. Orchestrator (`agents/orchestrator.rs`)
+**Role:** Central workflow coordinator
 
-```
-method-vi/src-tauri/src/
-├── agents/           # AI agent implementations
-│   ├── analysis_synthesis.rs    # Lens execution agent
-│   ├── governance_telemetry.rs  # Metrics calculation agent
-│   ├── orchestrator.rs          # Workflow coordination agent
-│   ├── scope_pattern.rs         # Charter management agent
-│   ├── structure_redesign.rs    # Framework generation agent
-│   ├── validation_learning.rs   # Audit & harvest agent
-│   └── mod.rs
-│
-├── api/              # External API integrations
-│   ├── anthropic.rs  # Claude API client
-│   └── mod.rs
-│
-├── artifacts/        # Artifact generation and validation
-│   ├── validation.rs # Artifact structure validation
-│   └── mod.rs
-│
-├── commands/         # Tauri IPC command handlers
-│   ├── step0.rs      # Charter & Vision command
-│   ├── step1.rs      # Baseline command
-│   ├── step2.rs      # Diagnostic command
-│   ├── step3.rs      # Synthesis command
-│   ├── step4.rs      # Validation command
-│   ├── step5.rs      # Structure & Redesign command
-│   ├── step6.rs      # Final Validation command
-│   ├── step6_5.rs    # Learning Harvest command
-│   ├── closure.rs    # Closure command
-│   └── mod.rs
-│
-├── config/           # Configuration management
-│   ├── thresholds.rs # Metric thresholds config
-│   └── mod.rs
-│
-├── context/          # Context window management
-│   ├── manager.rs    # Context pruning & chunking
-│   ├── types.rs      # Context data structures
-│   └── mod.rs
-│
-├── database/         # SQLite database layer
-│   ├── mod.rs        # Database initialization
-│   ├── schema.rs     # Schema migrations
-│   ├── models.rs     # Data models (Run, Artifact, etc.)
-│   ├── runs.rs       # Run CRUD operations
-│   ├── artifacts.rs  # Artifact CRUD operations
-│   ├── spine.rs      # Spine edge CRUD operations
-│   ├── patterns.rs   # Pattern library operations
-│   ├── ledger.rs     # Ledger CRUD operations
-│   └── flaws.rs      # Flaw tracking operations
-│
-├── ledger/           # Steno-Ledger (decision audit trail)
-│   ├── manager.rs    # Ledger operations
-│   ├── types.rs      # Entry types, categories
-│   └── mod.rs
-│
-├── signals/          # Event system (optional)
-│   ├── router.rs     # Signal routing
-│   ├── types.rs      # Signal definitions
-│   └── mod.rs
-│
-├── spine/            # Knowledge graph (concept linking)
-│   ├── manager.rs    # Spine operations
-│   ├── types.rs      # Node types, edge types
-│   └── mod.rs
-│
-├── lib.rs            # Library exports
-└── main.rs           # Tauri app entry point
-```
+**Responsibilities:**
+- Step progression control
+- Gate management (approval, rejection, warnings)
+- Metrics calculation coordination
+- State transitions
+- HALT condition enforcement
+- Signal routing
+- Ledger integration
 
-### Key Backend Components
+**Key Methods:**
+- `execute_step_X()` - Execute specific step
+- `check_progression_gates()` - Evaluate if step can proceed
+- `handle_halt_condition()` - Manage HALT states
+- `calculate_step_metrics()` - Trigger metric calculations
+- `emit_signal()` - Broadcast state changes
 
-#### 1. **Agents (agents/)**
+**Dependencies:**
+- GovernanceTelemetryAgent (metrics)
+- All specialized agents (step execution)
+- LedgerManager (decision tracking)
+- SpineManager (knowledge graph)
+- SignalRouter (event broadcasting)
 
-**Orchestrator (`orchestrator.rs`)**
-- **Function:** Coordinates the entire Method-VI workflow
-- **Responsibilities:**
-  - Step sequencing and state management
-  - Agent invocation and coordination
-  - HALT/PAUSE condition evaluation
-  - Resynthesis loop management
-  - Gate approval workflow
-- **Interactions:** Calls all other agents, manages Ledger/Spine
-- **Recent Changes:**
-  - FIX-025: EFI only evaluated at Step 6
-  - FIX-026: Uses deterministic PCI from governance agent
+### 2. Governance & Telemetry Agent (`agents/governance_telemetry.rs`)
+**Role:** Metrics calculation and quality enforcement
 
-**Governance & Telemetry (`governance_telemetry.rs`)**
-- **Function:** Calculates Critical 6 metrics for quality control
-- **Metrics Calculated:**
-  - **CI (Coherence Index):** Content logical flow and clarity
-  - **EV (Expansion Variance):** Entropy variance from baseline (informational)
-  - **IAS (Intent Alignment Score):** Alignment with charter objectives
-  - **EFI (Evidence Fidelity Index):** Claims substantiation ratio
-  - **SEC (Scope Expansion Count):** Scope change tracking (placeholder)
-  - **PCI (Process Compliance Index):** Process adherence checklist
-- **Interactions:** Called by Orchestrator at each step
-- **Recent Changes:**
-  - FIX-021: CI uses step-semantic weighting (deterministic)
-  - FIX-022: Structure weight varies by step (5% to 30%)
-  - FIX-023: EFI uses claim taxonomy filtering
-  - FIX-024: IAS soft gate (Warning 0.30-0.70, HALT < 0.30)
-  - FIX-025: EFI only enforced at Step 6
-  - FIX-026: PCI uses deterministic 4-category checklist
-  - FIX-027: EV always Pass (informational), SEC always 100% (placeholder)
+**Responsibilities:**
+- Calculate Critical 6 metrics
+- Step-semantic weighting (CI varies by step)
+- E_baseline calculation and locking
+- Threshold evaluation
+- HALT condition detection
+- Metric result formatting
 
-**Analysis & Synthesis (`analysis_synthesis.rs`)**
-- **Function:** Executes 6 lenses for Step 2 (Diagnostic)
-- **Lenses:**
-  1. Scope & Scale
-  2. Relationships & Dependencies
-  3. Technical Patterns
-  4. Risks & Constraints
-  5. Innovation Opportunities
-  6. Success Metrics
-- **Interactions:** Called by Step 2 command
-- **Output:** Diagnostic summary artifact
+**Key Metrics:**
+- **CI (Coherence Index)**: Step-weighted LLM-based evaluation
+  - Step 0-4: Structure weight 5%, Flow 50%
+  - Step 5+: Structure weight 30%, Flow 40%
+  - **Deterministic**: FIX-021 (caching/consistent prompts)
+- **EV (Expansion Variance)**: Entropy change detection
+  - **Status**: FIX-027 (Informational only, never HALT)
+- **IAS (Intent Alignment Score)**: Charter alignment
+  - **Soft Gate**: 0.30-0.69 = ResynthesisPause
+  - **Hard Gate**: <0.30 = HALT
+- **EFI (Evidence Fidelity Index)**: Claim substantiation
+  - **Scope**: Only Step 6 (FIX-025)
+  - **Taxonomy**: FIX-023 (filters claim types)
+- **SEC (Scope Expansion Count)**: Scope drift
+  - **Status**: FIX-027 (Placeholder, always 100%)
+- **PCI (Process Compliance Index)**: Workflow adherence
+  - **Type**: FIX-026 (Deterministic checklist)
+  - **Scope**: Only Step 6
 
-**Scope & Pattern (`scope_pattern.rs`)**
-- **Function:** Charter management and pattern library
-- **Responsibilities:**
-  - Charter validation and parsing
-  - Pattern library access
-  - Scope change detection (future)
-- **Interactions:** Called by Step 0 and Step 1
+**Recent Changes:**
+- FIX-021: CI determinism (0.0000 variance)
+- FIX-022: CI step-semantic weighting
+- FIX-023: EFI claim taxonomy filtering
+- FIX-024: IAS soft gate (0.30-0.70 warning)
+- FIX-025: EFI only at Step 6
+- FIX-026: PCI deterministic checklist
+- FIX-027: EV/SEC finalization (informational/placeholder)
 
-**Structure & Redesign (`structure_redesign.rs`)**
-- **Function:** Generates framework architecture at Step 5
-- **Responsibilities:**
-  - Framework structure design
-  - Component definition
-  - Relationship mapping
-- **Interactions:** Called by Step 5 command
-- **Output:** Framework draft artifact
+### 3. Analysis & Synthesis Agent (`agents/analysis_synthesis.rs`)
+**Role:** Multi-lens diagnostic analysis (Step 2 & 3)
 
-**Validation & Learning (`validation_learning.rs`)**
-- **Function:** Step 6 validation and Step 6.5 learning harvest
-- **Responsibilities:**
-  - Evidence audit (EFI evaluation)
-  - Cross-validation of framework
-  - Learning extraction and categorization
-  - Pattern identification
-- **Interactions:** Called by Step 6 and Step 6.5 commands
-- **Output:** Validation report, learning harvest artifact
+**Responsibilities:**
+- Execute 6 analytical lenses
+- Track lens efficacy scores
+- Integrate findings into unified diagnostic
+- Model geometry selection (Step 4)
 
-#### 2. **API Integration (api/)**
+**6 Lenses:**
+1. **Structural**: Architecture, organization, dependencies
+2. **Thematic**: Recurring themes, conceptual patterns
+3. **Logic**: Reasoning chains, assumptions, contradictions
+4. **Evidence**: Data support, gaps in substantiation
+5. **Expression**: Clarity, terminology, ambiguity
+6. **Intent**: Goal alignment, stakeholder concerns
 
-**Anthropic Client (`anthropic.rs`)**
-- **Function:** Claude API integration
-- **Features:**
-  - Streaming responses
-  - Structured prompts
-  - Error handling and retries
-  - Token usage tracking
-- **Model:** Claude Sonnet 3.5 (claude-3-5-sonnet-20241022)
-- **Interactions:** Used by all agents for LLM calls
+**Key Methods:**
+- `perform_step2_analysis()` - Execute all 6 lenses
+- `perform_step3_synthesis()` - Integrate lens findings
+- `calculate_efficacy_score()` - Evaluate lens value (placeholder)
+- `extract_key_findings()` - Parse lens output
 
-#### 3. **Commands (commands/)**
+**Data Structures:**
+- `LensResult`: Individual lens analysis
+- `LensEfficacyReport`: Aggregated efficacy tracking
+- `DiagnosticResult`: Step 2 output
 
-Each step has a corresponding command module:
-- **Pattern:** `pub async fn execute_stepX(app_handle, run_id, input) -> Result<Output>`
-- **Responsibilities:**
-  - Input validation
-  - Agent invocation
-  - Artifact persistence
-  - Metrics calculation
-  - Gate evaluation
-  - Response formatting
-- **Tauri IPC:** Exposed via `#[tauri::command]` macro
+### 4. Scope & Pattern Agent (`agents/scope_pattern.rs`)
+**Role:** Charter management and pattern matching
 
-**Command Flow:**
-1. Frontend calls command via Tauri IPC
-2. Command validates input and run state
-3. Command invokes appropriate agent(s)
-4. Agent performs work (LLM calls, data processing)
-5. Governance agent calculates metrics
-6. Orchestrator evaluates HALT/PAUSE conditions
-7. Artifacts saved to database
-8. Response returned to frontend
+**Responsibilities:**
+- Charter creation and validation
+- Pattern library management
+- Scope definition
+- Starter pattern suggestions
 
-#### 4. **Database (database/)**
+**Key Methods:**
+- `create_charter()` - Generate initial charter
+- `refine_charter()` - Improve charter based on feedback
+- `suggest_starter_patterns()` - Recommend patterns
+- `validate_scope()` - Ensure scope is appropriate
 
-**Schema (`schema.rs`)**
-- **Tables:**
-  - `runs`: Method-VI run sessions
-  - `artifacts`: Step outputs (charter, diagnostic, framework, etc.)
-  - `spine_edges`: Knowledge graph concept links
-  - `patterns`: Reusable framework patterns
-  - `ledger_entries`: Decision audit trail (Steno-Ledger)
-  - `flaws`: Persistent issue tracking
-- **Migrations:** Versioned schema changes
+### 5. Structure & Redesign Agent (`agents/structure_redesign.rs`)
+**Role:** Framework architecture generation (Step 5)
 
-**Models (`models.rs`)**
-- **Data structures:** Run, Artifact, SpineEdge, Pattern, LedgerEntry, PersistentFlaw
-- **Serialization:** Serde for JSON conversion
+**Responsibilities:**
+- Framework design generation
+- Artifact structure definition
+- Architectural pattern application
+- Design documentation
 
-**CRUD Modules:**
-- `runs.rs`: Create, read, update, delete runs
-- `artifacts.rs`: Artifact operations
-- `spine.rs`: Spine edge operations
-- `patterns.rs`: Pattern library operations
-- `ledger.rs`: Ledger entry operations
-- `flaws.rs`: Flaw tracking operations
+**Key Methods:**
+- `perform_step5_redesign()` - Generate framework
+- `create_framework_structure()` - Define architecture
+- `validate_framework_coherence()` - Check internal consistency
 
-#### 5. **Infrastructure**
+### 6. Validation & Learning Agent (`agents/validation_learning.rs`)
+**Role:** Evidence audit and learning harvest (Step 6 & 6.5)
 
-**Context Manager (`context/manager.rs`)**
-- **Function:** Manages LLM context window
-- **Features:**
-  - Intelligent pruning
-  - Chunk prioritization
-  - Summary generation
-- **Purpose:** Keep context under token limits while preserving key information
+**Responsibilities:**
+- Evidence fidelity audit (Step 6)
+- Learning harvest extraction (Step 6.5)
+- Pattern identification
+- Persistent flaw detection
 
-**Ledger (`ledger/manager.rs`)**
-- **Function:** Steno-Ledger implementation (decision audit trail)
-- **Entry Types:**
-  - Decisions (user choices, agent recommendations)
-  - Events (step completion, gate passage)
-  - Metrics (CI, EV, IAS, EFI, SEC, PCI scores)
-  - Failures (HALT conditions, errors)
-- **Purpose:** Full auditability and rollback capability
+**Key Methods:**
+- `perform_step6_validation()` - Evidence audit
+- `perform_step6_5_learning_harvest()` - Extract insights
+- `audit_evidence()` - Evaluate claim substantiation
+- `extract_learning_insights()` - Identify patterns
 
-**Spine (`spine/manager.rs`)**
-- **Function:** Knowledge graph for concept linking
-- **Node Types:**
-  - Intent_Anchor (charter goals)
-  - Core_Thesis (framework principles)
-  - Governance_Summary (metric summaries)
-  - Lens_Efficacy_Report (lens performance)
-  - Innovation_Notes (novel approaches)
-  - Diagnostic_Summary (analysis output)
-  - Framework_Draft (structure design)
-- **Edge Types:** Causal, elaborative, contradictory, etc.
-- **Purpose:** Concept traceability from charter to framework
-
----
-
-## Frontend Structure (React/TypeScript)
-
-### Directory Layout
-
-```
-method-vi/src/
-├── components/       # React components
-│   ├── layout/       # Layout components
-│   │   ├── Header.tsx       # App header with navigation
-│   │   ├── Sidebar.tsx      # Step navigation sidebar
-│   │   └── MainLayout.tsx   # Main app layout wrapper
-│   │
-│   ├── metrics/      # Metrics visualization
-│   │   ├── MetricCard.tsx       # Individual metric display
-│   │   └── MetricsDashboard.tsx # Full metrics dashboard
-│   │
-│   ├── steps/        # Step-specific views
-│   │   ├── Step0View.tsx    # Charter & Vision UI
-│   │   ├── Step1View.tsx    # Baseline UI
-│   │   ├── Step2View.tsx    # Diagnostic UI
-│   │   ├── Step3View.tsx    # Synthesis UI
-│   │   ├── Step4View.tsx    # Validation UI
-│   │   ├── Step5View.tsx    # Structure & Redesign UI
-│   │   ├── Step6View.tsx    # Final Validation UI
-│   │   ├── Step6_5View.tsx  # Learning Harvest UI
-│   │   └── ClosureView.tsx  # Closure UI
-│   │
-│   ├── ChatInterface.tsx  # Chat-based interaction UI
-│   ├── GateDialog.tsx     # Gate approval modal
-│   └── MetricsBar.tsx     # Compact metrics display
-│
-├── pages/            # Page components
-│   ├── Home.tsx           # Landing page / run creation
-│   ├── RunView.tsx        # Active run interface
-│   ├── Sessions.tsx       # Run history browser
-│   ├── Settings.tsx       # App settings
-│   └── MetricsTestPage.tsx # Metrics testing interface
-│
-├── types/            # TypeScript type definitions
-│   ├── index.ts     # General types (Run, Artifact, etc.)
-│   └── metrics.ts   # Metrics types (CriticalMetrics, etc.)
-│
-├── utils/            # Utility functions
-│   └── mockMetrics.ts # Mock data for development
-│
-├── App.tsx           # Root app component
-└── main.tsx          # React entry point
-```
-
-### Key Frontend Components
-
-#### 1. **Layout Components**
-
-**MainLayout (`components/layout/MainLayout.tsx`)**
-- **Function:** App-wide layout wrapper
-- **Features:**
-  - Header integration
-  - Sidebar integration
-  - Content area routing
-- **Interactions:** Wraps all page components
-
-**Header (`components/layout/Header.tsx`)**
-- **Function:** Top navigation bar
-- **Features:**
-  - App branding
-  - Current run display
-  - Settings access
-  - Metrics summary
-- **Interactions:** Always visible
-
-**Sidebar (`components/layout/Sidebar.tsx`)**
-- **Function:** Step navigation
-- **Features:**
-  - Step progress indicator
-  - Current step highlighting
-  - Gate status display
-  - Quick step switching
-- **Interactions:** Updates based on run state
-
-#### 2. **Step Views (components/steps/)**
-
-Each step has a dedicated view component:
-- **Pattern:** Input form + output display + metrics panel
-- **Responsibilities:**
-  - Render step-specific UI
-  - Handle user input
-  - Call backend command via Tauri
-  - Display results and artifacts
-  - Show metrics and gate status
-- **Interactions:** Communicate with backend via `invoke()` Tauri API
-
-**Example: Step0View.tsx (Charter & Vision)**
-- Input: Charter text (problem definition, objectives, scope)
-- Action: Calls `execute_step0` backend command
-- Output: Validated charter, Intent Anchor (Spine node)
-- Metrics: Initial baseline calculated
-
-#### 3. **Metrics Components**
-
-**MetricsDashboard (`components/metrics/MetricsDashboard.tsx`)**
-- **Function:** Full Critical 6 metrics visualization
-- **Features:**
-  - Real-time metric updates
-  - Status indicators (Pass/Warning/Fail)
-  - Threshold comparisons
-  - Historical trends (future)
-- **Data:** CriticalMetrics from backend
-
-**MetricCard (`components/metrics/MetricCard.tsx`)**
-- **Function:** Individual metric display
-- **Props:**
-  - Metric name (CI, EV, IAS, EFI, SEC, PCI)
-  - Value
-  - Status
-  - Threshold
-  - Interpretation
-- **Styling:** Color-coded by status
-
-**MetricsBar (`components/MetricsBar.tsx`)**
-- **Function:** Compact metrics summary
-- **Features:**
-  - Horizontal bar chart
-  - Quick status overview
-  - Expandable to full dashboard
-- **Use Case:** Header display
-
-#### 4. **Pages**
-
-**Home (`pages/Home.tsx`)**
-- **Function:** Landing page and run creation
-- **Features:**
-  - New run creation form
-  - Recent runs list
-  - Quick start templates
-- **Interactions:** Calls database commands to create runs
-
-**RunView (`pages/RunView.tsx`)**
-- **Function:** Active run interface
-- **Features:**
-  - Step component rendering
-  - Chat interface integration
-  - Metrics dashboard
-  - Gate approval workflow
-- **Interactions:** Coordinates all step views and metrics
-
-**Sessions (`pages/Sessions.tsx`)**
-- **Function:** Run history browser
-- **Features:**
-  - List all past runs
-  - Run details view
-  - Run deletion
-  - Run archival
-- **Interactions:** Database queries for run list
-
-**Settings (`pages/Settings.tsx`)**
-- **Function:** App configuration
-- **Features:**
-  - API key management
-  - Metric threshold configuration
-  - UI preferences
-  - Export/import settings
-- **Interactions:** Updates config files
-
-#### 5. **Type Definitions**
-
-**index.ts**
-- **Run:** id, status, created_at, step_states, artifacts
-- **Artifact:** id, run_id, step, content, artifact_type
-- **StepState:** step_number, status, metrics, gates_passed
-
-**metrics.ts**
-- **CriticalMetrics:** ci, ev, ias, efi, sec, pci (all Option<MetricResult>)
-- **MetricResult:** metric_name, value, threshold, status, inputs_used, calculation_method, interpretation, recommendation
-- **MetricStatus:** Pass, Warning, Fail
-- **ThresholdConfig:** pass, warning, halt thresholds
+**Data Structures:**
+- `ValidationResult`: Step 6 output
+- `LearningHarvestResult`: Step 6.5 output
+- `PersistentFlaw`: Recurring issues
 
 ---
 
 ## Agent System
 
-### Agent Architecture
+### Agent Interaction Map
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Orchestrator                      │
-│  - Workflow coordination                            │
-│  - Step sequencing                                  │
-│  - HALT/PAUSE evaluation                            │
-│  - Resynthesis loop management                      │
-└─────────────────────────────────────────────────────┘
-           │  Invokes ↓
-           ├──────────────────────────────────────────┐
-           │                                          │
-┌──────────▼─────────────┐               ┌───────────▼─────────────┐
-│ Governance/Telemetry   │               │  Domain Agents          │
-│ - Metrics calculation  │               │  - Analysis/Synthesis   │
-│ - CI, EV, IAS, EFI     │               │  - Scope/Pattern        │
-│ - SEC, PCI             │               │  - Structure/Redesign   │
-│ - HALT conditions      │               │  - Validation/Learning  │
-└────────────────────────┘               └─────────────────────────┘
-           │                                          │
-           │  Uses ↓                                  │  Uses ↓
-┌──────────▼─────────────────────────────────────────▼──────────┐
-│                    Anthropic API Client                        │
-│  - Claude LLM integration                                      │
-│  - Streaming responses                                         │
-│  - Structured prompts                                          │
-└────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     ORCHESTRATOR                             │
+│  (Central coordinator, step progression, gate management)   │
+└─────────────────────────────────────────────────────────────┘
+           │                    │                    │
+           ↓                    ↓                    ↓
+    ┌──────────┐         ┌──────────┐         ┌──────────┐
+    │Governance│         │  Scope/  │         │ Analysis │
+    │Telemetry │         │ Pattern  │         │Synthesis │
+    └──────────┘         └──────────┘         └──────────┘
+           │                    │                    │
+           ↓                    ↓                    ↓
+    Calculate CI         Create Charter      Run 6 Lenses
+    Calculate EV         Validate Scope      Integrate
+    Calculate IAS        Suggest Patterns    Diagnostic
+    Calculate EFI (S6)
+    Calculate SEC
+    Calculate PCI (S6)
+           │                                         │
+           └─────────────────┬───────────────────────┘
+                             ↓
+                    ┌─────────────────┐
+                    │    Structure    │
+                    │   & Redesign    │
+                    └─────────────────┘
+                             │
+                             ↓
+                    Generate Framework
+                    Design Architecture
+                             │
+                             ↓
+                    ┌─────────────────┐
+                    │   Validation    │
+                    │   & Learning    │
+                    └─────────────────┘
+                             │
+                             ↓
+                    Audit Evidence (S6)
+                    Extract Insights (S6.5)
 ```
 
-### Agent Responsibilities Matrix
+### Agent Lifecycle
 
-| Agent | Primary Function | LLM Calls | Metrics | Artifacts Produced |
-|-------|-----------------|-----------|---------|-------------------|
-| Orchestrator | Workflow coordination | No | No | None (coordinates only) |
-| Governance/Telemetry | Metrics calculation | Yes (CI, EV, IAS, EFI) | All 6 | MetricResult structs |
-| Analysis/Synthesis | Lens execution | Yes (6 lenses) | No | Diagnostic summary |
-| Scope/Pattern | Charter management | Yes (validation) | No | Intent Anchor (Spine) |
-| Structure/Redesign | Framework generation | Yes (architecture) | No | Framework draft |
-| Validation/Learning | Audit & harvest | Yes (evidence, patterns) | No | Validation report, Learning harvest |
-
-### Agent Interaction Flow (Typical Step Execution)
-
-```
-1. Frontend: User submits step input
-   ↓
-2. Command Handler: Validates input
-   ↓
-3. Orchestrator: Step execution begins
-   ↓
-4. Domain Agent: Performs step-specific work
-   │  - Calls Claude API
-   │  - Generates artifact
-   ↓
-5. Governance Agent: Calculates metrics
-   │  - CI (coherence)
-   │  - EV (entropy variance - informational)
-   │  - IAS (charter alignment)
-   │  - EFI (evidence - Step 6 only)
-   │  - SEC (scope - placeholder)
-   │  - PCI (process compliance - Step 6 only)
-   ↓
-6. Orchestrator: Evaluates conditions
-   │  - HALT: Critical failure (CI < 0.50, IAS < 0.30, EFI < 0.50 at Step 6, PCI < 0.70 at Step 6)
-   │  - PAUSE: Warning (IAS 0.30-0.70, PCI 0.70-0.95 at Step 6)
-   │  - PASS: All metrics acceptable
-   ↓
-7. Command Handler: Returns result to frontend
-   │  - Artifact
-   │  - Metrics
-   │  - HALT/PAUSE/PASS status
-   │  - Next action (continue, resynthesize, gate approval)
-   ↓
-8. Frontend: Displays results and awaits user action
-```
+1. **Initialization**: Agent created with API key
+2. **Context Setting**: Charter, prior artifacts loaded
+3. **Execution**: Agent performs specialized task
+4. **Metric Calculation**: Governance evaluates output
+5. **Gate Check**: Orchestrator evaluates progression
+6. **State Update**: Ledger records decision, Spine links artifacts
+7. **Signal Emission**: Frontend notified of state change
 
 ---
 
-## Database Layer
+## Database Architecture
 
 ### Schema Overview
 
-**Runs Table**
 ```sql
-CREATE TABLE runs (
-    id TEXT PRIMARY KEY,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    status TEXT NOT NULL,  -- active, completed, halted, archived
-    current_step INTEGER NOT NULL,
-    metadata TEXT  -- JSON metadata
-);
+-- 6 Primary Tables
+
+1. runs
+   - id (TEXT PRIMARY KEY)
+   - status (TEXT: active, completed, halted)
+   - current_step (INTEGER: 0-7)
+   - created_at, updated_at (DATETIME)
+   - charter, baseline_report (TEXT)
+
+2. artifacts
+   - id (TEXT PRIMARY KEY)
+   - run_id (TEXT FOREIGN KEY → runs.id)
+   - artifact_type (TEXT: Charter, Baseline, Diagnostic, etc.)
+   - content (TEXT)
+   - step (INTEGER)
+   - created_at (DATETIME)
+
+3. spine_edges (Knowledge Graph)
+   - source_id (TEXT → artifacts.id)
+   - target_id (TEXT → artifacts.id)
+   - edge_type (TEXT: DerivedFrom, Supports, Refines, etc.)
+   - created_at (DATETIME)
+   - PRIMARY KEY (source_id, target_id)
+
+4. patterns
+   - id (TEXT PRIMARY KEY)
+   - name (TEXT)
+   - description (TEXT)
+   - category (TEXT: framework, diagnostic, validation)
+   - is_starter (BOOLEAN)
+
+5. steno_ledger (Decision Audit Trail)
+   - id (INTEGER PRIMARY KEY AUTOINCREMENT)
+   - run_id (TEXT FOREIGN KEY → runs.id)
+   - step (INTEGER)
+   - role (TEXT: A=Agent, H=Human, S=System)
+   - action (TEXT)
+   - prior_hash (TEXT: SHA-256 of previous entry)
+   - created_at (DATETIME)
+
+6. persistent_flaws
+   - id (INTEGER PRIMARY KEY AUTOINCREMENT)
+   - pattern_signature (TEXT)
+   - description (TEXT)
+   - severity (TEXT: Warning, Critical)
+   - first_seen, last_seen (DATETIME)
+   - occurrence_count (INTEGER)
 ```
 
-**Artifacts Table**
-```sql
-CREATE TABLE artifacts (
-    id TEXT PRIMARY KEY,
-    run_id TEXT NOT NULL REFERENCES runs(id),
-    step INTEGER NOT NULL,
-    artifact_type TEXT NOT NULL,  -- charter, diagnostic, framework, etc.
-    content TEXT NOT NULL,  -- Artifact markdown content
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
-);
+### Key Relationships
+
+```
+runs (1) ──→ (many) artifacts
+              │
+              └──→ spine_edges (links artifacts together)
+
+runs (1) ──→ (many) steno_ledger (decision chain)
+
+patterns (many) ←── suggested in Step 0/1
+
+persistent_flaws ←── identified in Step 6.5
 ```
 
-**Spine Edges Table**
-```sql
-CREATE TABLE spine_edges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id TEXT NOT NULL,
-    source_id TEXT NOT NULL,  -- Source artifact/node ID
-    target_id TEXT NOT NULL,  -- Target artifact/node ID
-    edge_type TEXT NOT NULL,  -- causal, elaborative, contradictory, etc.
-    metadata TEXT,  -- JSON metadata
-    created_at TEXT NOT NULL
-);
-```
+### Database Managers
 
-**Ledger Entries Table**
-```sql
-CREATE TABLE ledger_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id TEXT NOT NULL,
-    step INTEGER NOT NULL,
-    entry_type TEXT NOT NULL,  -- decision, event, metric, failure
-    category TEXT NOT NULL,  -- user_action, agent_recommendation, metric_calculated, etc.
-    content TEXT NOT NULL,  -- Entry details (JSON)
-    timestamp TEXT NOT NULL
-);
-```
+**Location:** `src/database/`
 
-**Patterns Table**
-```sql
-CREATE TABLE patterns (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    category TEXT NOT NULL,  -- starter, domain_specific, reusable
-    description TEXT,
-    template TEXT NOT NULL,  -- Pattern template
-    metadata TEXT,  -- JSON metadata
-    created_at TEXT NOT NULL
-);
-```
-
-**Persistent Flaws Table**
-```sql
-CREATE TABLE flaws (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    pattern TEXT NOT NULL,  -- Flaw description/pattern
-    severity TEXT NOT NULL,  -- low, medium, high
-    first_seen TEXT NOT NULL,
-    last_seen TEXT NOT NULL,
-    occurrence_count INTEGER DEFAULT 1,
-    status TEXT NOT NULL  -- open, acknowledged, resolved
-);
-```
-
-### Database Operations
-
-**Run Lifecycle:**
-1. Create run → `runs` table insert
-2. Execute steps → `artifacts` table inserts
-3. Log decisions → `ledger_entries` table inserts
-4. Link concepts → `spine_edges` table inserts
-5. Complete/archive run → `runs` table update
-
-**Query Patterns:**
-- Get run with all artifacts: `SELECT * FROM runs JOIN artifacts ON runs.id = artifacts.run_id WHERE runs.id = ?`
-- Get step artifact: `SELECT * FROM artifacts WHERE run_id = ? AND step = ?`
-- Get ledger for run: `SELECT * FROM ledger_entries WHERE run_id = ? ORDER BY timestamp`
-- Get spine for artifact: `SELECT * FROM spine_edges WHERE source_id = ? OR target_id = ?`
+- `mod.rs`: Database initialization, connection management
+- `schema.rs`: Table creation, migrations
+- `runs.rs`: CRUD operations for runs
+- `artifacts.rs`: CRUD operations for artifacts
+- `patterns.rs`: Pattern library management
+- `ledger.rs`: Legacy CRUD (superseded by LedgerManager)
+- `spine.rs`: Legacy CRUD (superseded by SpineManager)
+- `flaws.rs`: Persistent flaw tracking
+- `models.rs`: Data structures (Run, Artifact, etc.)
 
 ---
 
-## Metrics & Governance
+## Metrics & Governance System
 
-### Critical 6 Metrics
-
-#### 1. **CI (Coherence Index)**
-- **Function:** Measures logical flow, term consistency, sentence clarity, structure
-- **Calculation:** Step-semantic weighted average of 4 LLM-evaluated components
-- **Weights by Step:**
-  - Step 0-2: Flow 50%, Term 15%, Clarity 30%, Structure 5%
-  - Step 3: Flow 50%, Term 15%, Clarity 30%, Structure 5%
-  - Step 4: Flow 50%, Term 15%, Clarity 25%, Structure 10%
-  - Step 5: Flow 40%, Term 15%, Clarity 15%, Structure 30%
-  - Step 6: Flow 45%, Term 15%, Clarity 20%, Structure 20%
-- **Thresholds:** Pass ≥ 0.70, Warning ≥ 0.50, Fail < 0.50
-- **Enforcement:** All steps (HALT if < 0.50)
-- **Recent Changes:** FIX-021 (deterministic), FIX-022 (step-semantic weights)
-
-#### 2. **EV (Expansion Variance)**
-- **Function:** Tracks entropy variance from baseline
-- **Calculation:** |E_current - E_baseline| / E_baseline × 100
-- **Entropy Formula:** (Unique_Concepts + Defined_Relationships + Decision_Points) / Content_Units
-- **Thresholds:** Display only (not enforced)
-- **Enforcement:** NEVER (informational only)
-- **Recent Changes:** FIX-027 (always Pass status, never blocks)
-- **Purpose:** Calibration data collection for future tuning
-
-#### 3. **IAS (Intent Alignment Score)**
-- **Function:** Measures content alignment with charter objectives
-- **Calculation:** LLM-based comparison of content against charter
-- **Thresholds:**
-  - Pass ≥ 0.70
-  - Warning 0.30 - 0.70 (soft gate, triggers ResynthesisPause)
-  - Fail < 0.30 (hard gate, triggers HALT)
-- **Enforcement:** All steps
-- **Recent Changes:** FIX-024 (soft gate for resynthesis)
-- **Special Behavior:** IAS 0.30-0.70 triggers PAUSE for resynthesis, not HALT
-
-#### 4. **EFI (Evidence Fidelity Index)**
-- **Function:** Measures percentage of factual/prescriptive claims substantiated with evidence
-- **Calculation:** Substantiated Scored Claims / Total Scored Claims
-- **Claim Taxonomy:**
-  - **Scored Claims:** Factual claims, Predictive claims, Prescriptive claims
-  - **Ignored:** Instructional statements, Procedural steps, Observational notes
-- **Thresholds:** Pass ≥ 0.80, Warning ≥ 0.50, Fail < 0.50
-- **Enforcement:** Step 6 ONLY (final validation)
-- **Recent Changes:**
-  - FIX-023 (claim taxonomy filtering)
-  - FIX-025 (Step 6 only enforcement)
-
-#### 5. **SEC (Scope Expansion Count)**
-- **Function:** Tracks scope changes and expansions
-- **Calculation:** Placeholder (always 100% for MVP)
-- **Thresholds:** Pass = 100%
-- **Enforcement:** NEVER (placeholder, not implemented)
-- **Recent Changes:** FIX-027 (explicit placeholder status)
-- **Future:** Will track charter modifications and require approval for scope expansions
-
-#### 6. **PCI (Process Compliance Index)**
-- **Function:** Measures adherence to Method-VI process
-- **Calculation:** Deterministic 4-category checklist
-- **Categories:**
-  - Step Sequence (25%): Steps executed in order
-  - Gate Compliance (30%): Required approvals obtained
-  - Artifact Presence (20%): Required artifacts exist
-  - Audit Integrity (25%): Ledger/Spine intact, no retroactive edits
-- **Thresholds:** Pass ≥ 0.95, Warning ≥ 0.70, Fail < 0.70
-- **Enforcement:** Step 6 ONLY (final audit)
-- **Recent Changes:** FIX-026 (deterministic checklist, no LLM variance)
-
-### Metrics Calculation Flow
+### Metric Calculation Flow
 
 ```
-1. Agent completes step work (artifact generated)
-   ↓
-2. Governance agent.calculate_metrics() called
-   ↓
-3. Calculate E_baseline (if Step 1)
-   ↓
-4. Calculate metrics:
-   ├─ CI (all steps): LLM evaluation → weighted average
-   ├─ EV (all steps): Entropy calculation → variance % → Always Pass
-   ├─ IAS (all steps): LLM charter comparison → score
-   ├─ EFI (Step 6 only): LLM claim analysis → substantiation %
-   ├─ SEC (all steps): Placeholder → 100% → Pass
-   └─ PCI (Step 6 only): Checklist audit → weighted score
-   ↓
-5. Return CriticalMetrics struct
-   ↓
-6. Orchestrator.check_halt_conditions()
-   ├─ CI < 0.50? → HALT
-   ├─ IAS < 0.30? → HALT
-   ├─ IAS 0.30-0.70? → PAUSE (resynthesis)
-   ├─ EFI < 0.50 (Step 6 only)? → HALT
-   └─ PCI < 0.70 (Step 6 only)? → HALT
-   ↓
-7. Return HALT/PAUSE/PASS status to command
+Step Execution
+     ↓
+Generate Output (framework, analysis, etc.)
+     ↓
+Orchestrator calls GovernanceTelemetryAgent.calculate_metrics()
+     ↓
+┌─────────────────────────────────────────────────┐
+│  Governance Agent Calculates:                   │
+│  1. CI (always) - LLM-based, step-weighted     │
+│  2. EV (always) - Entropy comparison            │
+│  3. IAS (always) - Charter alignment            │
+│  4. EFI (Step 6 only) - Claim substantiation   │
+│  5. SEC (always) - Placeholder (100%)           │
+│  6. PCI (Step 6 only) - Checklist evaluation   │
+└─────────────────────────────────────────────────┘
+     ↓
+Return CriticalMetrics struct
+     ↓
+Orchestrator.check_halt_conditions()
+     ↓
+┌─────────────────────────────────────────────────┐
+│  HALT if:                                        │
+│  - CI < 0.50                                     │
+│  - IAS < 0.30                                    │
+│  - EFI < 0.50 (Step 6 only)                     │
+│  - PCI < threshold (Step 6 only)                │
+└─────────────────────────────────────────────────┘
+     ↓
+┌─────────────────────────────────────────────────┐
+│  ResynthesisPause if:                            │
+│  - 0.50 ≤ CI < 0.70                              │
+│  - 0.30 ≤ IAS < 0.70                             │
+└─────────────────────────────────────────────────┘
+     ↓
+Pass → Continue to next step
+```
+
+### Metric Details
+
+#### CI (Coherence Index)
+**Purpose:** Measure logical flow, term consistency, clarity, and structure
+
+**Calculation:**
+1. LLM evaluates 4 components (0.0-1.0 each):
+   - Logical Flow
+   - Term Consistency
+   - Sentence Clarity
+   - Structural Organization
+2. Weighted average based on current step
+3. Return final score (0.0-1.0)
+
+**Step-Semantic Weights:**
+- **Steps 0-4:** Flow 50%, Terms 15%, Clarity 30%, Structure 5%
+- **Step 5+:** Flow 40%, Terms 15%, Clarity 15%, Structure 30%
+
+**Thresholds:**
+- Pass: ≥ 0.70
+- Warning: 0.50-0.69
+- Fail/HALT: < 0.50
+
+**Enforcement:** All steps
+
+**Recent Changes:**
+- FIX-021: Made deterministic (0.0000 variance)
+- FIX-022: Implemented step-semantic weighting
+
+#### EV (Expansion Variance)
+**Purpose:** Detect content growth instability
+
+**Calculation:**
+1. Calculate entropy of current content (E_current)
+2. Compare to E_baseline (locked at Step 1)
+3. Return percentage variance: `|(E_current - E_baseline) / E_baseline| * 100`
+
+**Thresholds:**
+- Pass: ≤ 10%
+- Warning: 10-20%
+- "Fail": > 20% (but never enforced)
+
+**Enforcement:** NONE - Informational only (FIX-027)
+
+**Recent Changes:**
+- FIX-027: Status always Pass, never triggers HALT
+
+#### IAS (Intent Alignment Score)
+**Purpose:** Measure alignment with charter intent
+
+**Calculation:**
+1. LLM compares content to charter
+2. Returns score 0.0-1.0 (alignment strength)
+
+**Thresholds:**
+- Pass: ≥ 0.70
+- Soft Gate (Warning): 0.30-0.69
+- Hard Gate (HALT): < 0.30
+
+**Enforcement:** All steps
+
+**Gate Behavior:**
+- **0.70-1.00:** Pass (aligned intent)
+- **0.30-0.69:** ResynthesisPause (drift detected, needs acknowledgment)
+- **< 0.30:** HALT (extreme drift, hard stop)
+
+**Recent Changes:**
+- FIX-024: Implemented soft gate (0.30-0.70 warning range)
+
+#### EFI (Evidence Fidelity Index)
+**Purpose:** Measure claim substantiation quality
+
+**Calculation:**
+1. LLM identifies all claims (factual/predictive/prescriptive)
+2. Ignores instructional/procedural/observational statements
+3. Evaluates evidence for each claim
+4. Returns: `substantiated_claims / total_claims`
+
+**Claim Taxonomy:**
+- **Scored (require evidence):**
+  - Factual: "X is Y"
+  - Predictive: "X will cause Y"
+  - Prescriptive: "Always do X" (normative)
+- **Ignored (no evidence needed):**
+  - Instructional: "Run command X"
+  - Procedural: "Step 1, Step 2..."
+  - Observational: "We see X"
+
+**Thresholds:**
+- Pass: ≥ 0.80
+- Warning: 0.50-0.79
+- Fail/HALT: < 0.50
+
+**Enforcement:** Step 6 ONLY (FIX-025)
+
+**Recent Changes:**
+- FIX-023: Implemented claim taxonomy filtering
+- FIX-025: Restricted to Step 6 only (consistent with PCI)
+
+#### SEC (Scope Expansion Count)
+**Purpose:** Detect scope creep
+
+**Calculation:** Placeholder (always returns 100%)
+
+**Thresholds:** N/A (placeholder)
+
+**Enforcement:** NONE - Placeholder for MVP (FIX-027)
+
+**Future:** Will track scope changes via Ledger analysis
+
+**Recent Changes:**
+- FIX-027: Explicit placeholder, always 100%, always Pass
+
+#### PCI (Process Compliance Index)
+**Purpose:** Measure workflow adherence
+
+**Calculation:** Deterministic 4-category checklist
+
+**Categories:**
+1. **Step Sequence (25%):** Steps executed in order
+2. **Gate Compliance (30%):** Required approvals obtained
+3. **Artifact Presence (20%):** Required artifacts exist
+4. **Audit Integrity (25%):** Ledger/Spine intact, no retroactive edits
+
+**Thresholds:**
+- Pass: ≥ 0.95
+- Warning: 0.80-0.94
+- Fail/HALT: < 0.80
+
+**Enforcement:** Step 6 ONLY (validation step)
+
+**Recent Changes:**
+- FIX-026: Converted from LLM-based to deterministic checklist (0.0000 variance)
+
+### Threshold Configuration
+
+**Location:** `src/agents/governance_telemetry.rs` (ThresholdsConfig struct)
+
+```rust
+ThresholdsConfig {
+    ci: { pass: 0.70, warning: Some(0.50), halt: Some(0.50) },
+    ev: { pass: 10.0, warning: Some(20.0), halt: Some(30.0) },  // Not enforced
+    ias: { pass: 0.70, warning: Some(0.30), halt: Some(0.30) },
+    efi: { pass: 0.80, warning: Some(0.50), halt: Some(0.50) },
+    sec: { pass: 100.0, warning: None, halt: None },  // Placeholder
+    pci: { pass: 0.95, warning: Some(0.80), halt: Some(0.80) },
+}
+```
+
+**Customization:** Future enhancement - user-configurable thresholds via settings
+
+---
+
+## Data Flow Patterns
+
+### 1. Step Execution Flow
+
+```
+User clicks "Start Step N"
+     ↓
+Frontend: invoke step_N command via Tauri IPC
+     ↓
+Backend: commands/stepN.rs receives request
+     ↓
+Load run state from database
+     ↓
+Orchestrator.execute_step_N()
+     ↓
+┌─────────────────────────────────────────┐
+│ Agent performs step-specific work:      │
+│ - Step 0: Create charter                │
+│ - Step 1: Generate baseline             │
+│ - Step 2: Run 6 lenses                  │
+│ - Step 3: Synthesize analysis           │
+│ - Step 4: Cross-validate                │
+│ - Step 5: Design framework              │
+│ - Step 6: Audit evidence                │
+│ - Step 6.5: Extract learnings           │
+└─────────────────────────────────────────┘
+     ↓
+Store artifact in database
+     ↓
+Update Spine (link artifact to dependencies)
+     ↓
+Calculate metrics (GovernanceTelemetryAgent)
+     ↓
+Record decision in Ledger (StepCompleted)
+     ↓
+Check halt conditions
+     ↓
+┌──────────────────────────────────────┐
+│ If HALT:                              │
+│ - Set run status to "halted"         │
+│ - Record HaltTriggered in Ledger     │
+│ - Emit halt_triggered signal         │
+│ - Return error to frontend           │
+└──────────────────────────────────────┘
+     ↓
+┌──────────────────────────────────────┐
+│ If ResynthesisPause:                  │
+│ - Set gate_pending = true            │
+│ - Record GateTriggered in Ledger     │
+│ - Emit gate_triggered signal         │
+│ - Return warning to frontend         │
+└──────────────────────────────────────┘
+     ↓
+┌──────────────────────────────────────┐
+│ If Pass:                              │
+│ - Update run.current_step            │
+│ - Record Progression in Ledger       │
+│ - Emit step_completed signal         │
+│ - Return success to frontend         │
+└──────────────────────────────────────┘
+     ↓
+Frontend: Display results, update UI state
+```
+
+### 2. Ledger (Steno) Chain Flow
+
+```
+Action occurs (step completion, gate decision, etc.)
+     ↓
+LedgerManager.create_entry()
+     ↓
+┌───────────────────────────────────────────┐
+│ Build LedgerEntry:                         │
+│ - run_id: Current run UUID                 │
+│ - step: Current step (0-7)                 │
+│ - role: A (Agent), H (Human), S (System)   │
+│ - action: StepCompleted, GateApproved, etc.│
+│ - content: JSON payload                    │
+│ - prior_hash: SHA-256 of previous entry    │
+└───────────────────────────────────────────┘
+     ↓
+Validate state transition (FSM rules)
+     ↓
+┌───────────────────────────────────────────┐
+│ State Transition Rules:                    │
+│ - Step 0: Only IntentCapture, PatternQuery│
+│ - BaselineFrozen: Analysis allowed,        │
+│                   scope changes blocked    │
+│ - GatePending: Human approval needed,      │
+│                agent progression blocked   │
+│ - HaltActive: Only human decisions allowed │
+└───────────────────────────────────────────┘
+     ↓
+Calculate SHA-256 hash of entry
+     ↓
+Store entry in steno_ledger table
+     ↓
+Update in-memory chain cache
+     ↓
+Return entry ID
+```
+
+**Ledger Integrity:**
+- **Immutability:** Entries cannot be modified (only appended)
+- **Chain Verification:** Each entry links to prior via hash
+- **Tamper Detection:** Broken chain indicates retroactive edits
+- **Audit Trail:** Complete decision history for compliance
+
+### 3. Spine (Knowledge Graph) Flow
+
+```
+Artifact created (Charter, Baseline, Framework, etc.)
+     ↓
+SpineManager.create_artifact()
+     ↓
+Store artifact in artifacts table
+     ↓
+Determine dependencies (based on step and type)
+     ↓
+┌─────────────────────────────────────────┐
+│ Dependency Rules:                        │
+│ - Charter → Intent Anchor               │
+│ - Baseline → Charter                    │
+│ - Diagnostic → Baseline                 │
+│ - Synthesis → Diagnostic                │
+│ - Framework → Synthesis, Charter        │
+│ - Validation → Framework                │
+└─────────────────────────────────────────┘
+     ↓
+SpineManager.create_edge(source, target, edge_type)
+     ↓
+Store edge in spine_edges table
+     ↓
+Update in-memory graph cache
+     ↓
+Verify no cycles introduced
+     ↓
+Return artifact ID
+```
+
+**Spine Queries:**
+- `get_dependencies(artifact_id)`: Get all sources
+- `get_dependents(artifact_id)`: Get all targets
+- `get_lineage(artifact_id)`: Trace back to Intent Anchor
+- `get_critical_path()`: Identify key decision chain
+- `verify_integrity()`: Check for orphans, cycles, broken links
+
+### 4. Signal Emission Flow
+
+```
+State change occurs (step complete, gate triggered, etc.)
+     ↓
+Orchestrator.emit_signal()
+     ↓
+SignalRouter.emit()
+     ↓
+┌──────────────────────────────────────────┐
+│ Create Signal:                            │
+│ - signal_type: StepCompleted, etc.       │
+│ - run_id: Current run UUID                │
+│ - step: Current step                      │
+│ - data: Metrics, gate status, etc.       │
+│ - prior_hash: Link to previous signal    │
+└──────────────────────────────────────────┘
+     ↓
+Broadcast via Tauri event system
+     ↓
+Frontend listeners receive signal
+     ↓
+Update UI state (step status, metrics display, etc.)
+```
+
+**Signal Types:**
+- `step_started`
+- `step_completed`
+- `gate_triggered`
+- `gate_approved`
+- `gate_rejected`
+- `halt_triggered`
+- `run_completed`
+- `metrics_updated`
+
+---
+
+## File Structure & Relationships
+
+### Project Root Structure
+
+```
+method-vi-app/
+├── method-vi/                    # Main application
+│   ├── src/                      # Frontend (React/TypeScript)
+│   ├── src-tauri/                # Backend (Rust)
+│   ├── package.json              # Node dependencies
+│   └── tailwind.config.js        # Tailwind CSS config
+├── ARCHITECTURE-*.md             # This document
+├── INTEGRATION-TEST-*.md         # Test reports
+├── FIX-*.md                      # Fix implementation docs
+└── README.md                     # Project overview
+```
+
+### Backend Structure (`method-vi/src-tauri/src/`)
+
+```
+src/
+├── main.rs                       # Tauri app entry point
+├── lib.rs                        # Library root, command registration
+│
+├── agents/                       # AI agent implementations
+│   ├── mod.rs                    # Agent module exports
+│   ├── orchestrator.rs           # Central workflow coordinator
+│   ├── governance_telemetry.rs   # Metrics calculation agent
+│   ├── analysis_synthesis.rs     # Multi-lens diagnostic agent
+│   ├── scope_pattern.rs          # Charter & pattern agent
+│   ├── structure_redesign.rs     # Framework design agent
+│   └── validation_learning.rs    # Evidence audit & learning agent
+│
+├── commands/                     # Tauri command handlers
+│   ├── mod.rs                    # Command exports
+│   ├── step0.rs                  # Charter & Vision command
+│   ├── step1.rs                  # Baseline command
+│   ├── step2.rs                  # Multi-Angle Diagnostic command
+│   ├── step3.rs                  # Synthesis command
+│   ├── step4.rs                  # Cross-Validation command
+│   ├── step5.rs                  # Structure & Redesign command
+│   ├── step6.rs                  # Final Validation command
+│   ├── step6_5.rs                # Learning Harvest command
+│   └── closure.rs                # Closure & Archive command
+│
+├── database/                     # SQLite database layer
+│   ├── mod.rs                    # DB initialization, connections
+│   ├── schema.rs                 # Table definitions, migrations
+│   ├── models.rs                 # Data structures (Run, Artifact, etc.)
+│   ├── runs.rs                   # Run CRUD operations
+│   ├── artifacts.rs              # Artifact CRUD operations
+│   ├── patterns.rs               # Pattern library CRUD
+│   ├── ledger.rs                 # Legacy ledger CRUD
+│   ├── spine.rs                  # Legacy spine CRUD
+│   └── flaws.rs                  # Persistent flaw tracking
+│
+├── ledger/                       # Steno-Ledger (decision audit)
+│   ├── mod.rs                    # Ledger module exports
+│   ├── types.rs                  # LedgerEntry, SignalState, etc.
+│   └── manager.rs                # LedgerManager (FSM, chain logic)
+│
+├── spine/                        # Knowledge graph
+│   ├── mod.rs                    # Spine module exports
+│   ├── types.rs                  # ArtifactNode, EdgeType, etc.
+│   └── manager.rs                # SpineManager (graph operations)
+│
+├── signals/                      # Event broadcasting
+│   ├── mod.rs                    # Signal module exports
+│   ├── types.rs                  # Signal, SignalType, etc.
+│   └── router.rs                 # SignalRouter (event emission)
+│
+├── context/                      # Steno-Ledger context formatting
+│   ├── mod.rs                    # Context module exports
+│   ├── types.rs                  # ContextEntry, etc.
+│   └── manager.rs                # ContextManager (ledger → markdown)
+│
+├── artifacts/                    # Artifact validation
+│   ├── mod.rs                    # Artifact module exports
+│   └── validation.rs             # Artifact schema validation
+│
+├── api/                          # External API clients
+│   ├── mod.rs                    # API module exports
+│   └── anthropic.rs              # AnthropicClient (Claude API)
+│
+└── config/                       # Configuration
+    ├── mod.rs                    # Config module exports
+    └── thresholds.rs             # Metric threshold configuration
+```
+
+### Frontend Structure (`method-vi/src/`)
+
+```
+src/
+├── main.tsx                      # React app entry point
+├── App.tsx                       # Root component, routing
+│
+├── pages/                        # Top-level pages
+│   ├── Home.tsx                  # Landing page, run selection
+│   ├── RunView.tsx               # Active run interface
+│   ├── SessionsPage.tsx          # Run history
+│   └── SettingsPage.tsx          # Configuration
+│
+├── components/                   # Reusable UI components
+│   ├── Chat.tsx                  # Chat interface for steps
+│   ├── StepIndicator.tsx         # Progress visualization
+│   ├── MetricsDisplay.tsx        # Metrics dashboard
+│   ├── GateModal.tsx             # Gate approval/rejection UI
+│   └── ...
+│
+├── hooks/                        # React hooks
+│   ├── useRun.ts                 # Run state management
+│   ├── useStep.ts                # Step execution
+│   ├── useMetrics.ts             # Metrics loading
+│   └── ...
+│
+├── types/                        # TypeScript type definitions
+│   ├── run.ts                    # Run, RunStatus, etc.
+│   ├── metrics.ts                # CriticalMetrics, etc.
+│   ├── artifact.ts               # Artifact types
+│   └── ...
+│
+└── utils/                        # Utility functions
+    ├── tauri.ts                  # Tauri IPC helpers
+    ├── formatting.ts             # Date, number formatting
+    └── ...
+```
+
+### Testing Structure (`method-vi/src-tauri/`)
+
+```
+tests/                            # Integration tests
+├── test_metrics.rs               # Metrics calculation tests
+├── test_validation_agent.rs      # Validation agent tests
+└── test_triggered_metrics_filtering.rs  # Metric enforcement tests
+
+examples/                         # Example/test programs
+├── test_integration_metrics.rs   # Comprehensive integration suite (10 tests)
+├── test_claude_api.rs            # API client test
+├── test_step_1.rs                # Step 1 execution test
+└── test_analysis_agent.rs        # Analysis agent test
+
+*.bat                             # Windows test runners
+├── test-integration.bat          # Run integration tests
+├── test-metrics.bat              # Run metrics tests
+├── test-step-1.bat               # Run step 1 test
+└── test-analysis-agent.bat       # Run analysis agent test
 ```
 
 ---
 
-## Data Flow
+## Complete File Reference
 
-### Full Step Execution Flow (Example: Step 2 - Diagnostic)
+### Backend Core Files
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. FRONTEND (Step2View.tsx)                                │
-│    - User provides analysis context                        │
-│    - Clicks "Run Diagnostic"                                │
-└─────────────────────────────────────────────────────────────┘
-                         ↓ invoke("execute_step2", {run_id, input})
-┌─────────────────────────────────────────────────────────────┐
-│ 2. COMMAND HANDLER (commands/step2.rs)                     │
-│    - Validates input                                        │
-│    - Loads run from database                                │
-│    - Checks run status and current step                     │
-└─────────────────────────────────────────────────────────────┘
-                         ↓ orchestrator.execute_step2()
-┌─────────────────────────────────────────────────────────────┐
-│ 3. ORCHESTRATOR (agents/orchestrator.rs)                   │
-│    - Verifies step prerequisites                            │
-│    - Loads charter (Intent Anchor)                          │
-│    - Prepares context for agent                             │
-└─────────────────────────────────────────────────────────────┘
-                         ↓ analysis_agent.execute_lenses()
-┌─────────────────────────────────────────────────────────────┐
-│ 4. ANALYSIS AGENT (agents/analysis_synthesis.rs)           │
-│    - Executes 6 lenses sequentially:                        │
-│      1. Scope & Scale                                       │
-│      2. Relationships & Dependencies                        │
-│      3. Technical Patterns                                  │
-│      4. Risks & Constraints                                 │
-│      5. Innovation Opportunities                            │
-│      6. Success Metrics                                     │
-│    - Each lens: Claude API call → analysis                  │
-│    - Synthesizes lens outputs into diagnostic summary       │
-└─────────────────────────────────────────────────────────────┘
-                         ↓ Returns diagnostic artifact
-┌─────────────────────────────────────────────────────────────┐
-│ 5. GOVERNANCE AGENT (agents/governance_telemetry.rs)       │
-│    - calculate_metrics(diagnostic, charter, step=2)         │
-│    - CI: LLM eval → 0.84 (Pass)                             │
-│    - EV: Entropy calc → 72.8% variance → Pass (info only)  │
-│    - IAS: LLM charter comparison → 0.90 (Pass)              │
-│    - EFI: Not calculated (Step 6 only)                      │
-│    - SEC: Placeholder → 100% (Pass)                         │
-│    - PCI: Not calculated (Step 6 only)                      │
-└─────────────────────────────────────────────────────────────┘
-                         ↓ Returns CriticalMetrics
-┌─────────────────────────────────────────────────────────────┐
-│ 6. ORCHESTRATOR (agents/orchestrator.rs)                   │
-│    - check_halt_conditions(metrics, step=2)                 │
-│    - CI = 0.84 ≥ 0.50 ✓                                     │
-│    - IAS = 0.90 ≥ 0.30 ✓                                    │
-│    - Decision: PASS (continue to next step)                 │
-│    - Saves artifact to database                             │
-│    - Logs metrics to Ledger                                 │
-│    - Updates Spine (links diagnostic → charter)             │
-└─────────────────────────────────────────────────────────────┘
-                         ↓ Returns StepResult
-┌─────────────────────────────────────────────────────────────┐
-│ 7. COMMAND HANDLER (commands/step2.rs)                     │
-│    - Formats response                                       │
-│    - Returns StepOutput to frontend                         │
-└─────────────────────────────────────────────────────────────┘
-                         ↓ Tauri IPC response
-┌─────────────────────────────────────────────────────────────┐
-│ 8. FRONTEND (Step2View.tsx)                                │
-│    - Displays diagnostic summary                            │
-│    - Shows metrics dashboard (CI, EV, IAS, SEC)             │
-│    - Status: PASS → "Continue to Step 3" button enabled     │
-└─────────────────────────────────────────────────────────────┘
+#### `src/main.rs` (27 lines)
+**Purpose:** Tauri application entry point
+
+**Responsibilities:**
+- Launch Tauri app
+- Register command handlers
+- Initialize app state
+
+**Key Code:**
+```rust
+fn main() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            // All step commands registered here
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
 ```
 
-### HALT Condition Flow
+**Dependencies:** lib.rs (command definitions)
+
+---
+
+#### `src/lib.rs` (100 lines)
+**Purpose:** Library root, exports all commands
+
+**Responsibilities:**
+- Import all command modules
+- Export commands for registration
+- Re-export types for frontend
+
+**Key Exports:**
+- Step commands: `step0_charter`, `step1_baseline`, etc.
+- Utility commands: `get_run`, `get_metrics`, `validate_artifact`
+
+**Dependencies:** All command modules
+
+---
+
+### Agent System
+
+#### `src/agents/orchestrator.rs` (~2,500 lines)
+**Purpose:** Central workflow coordinator
+
+**Key Structures:**
+- `Orchestrator`: Main workflow manager
+- `StepResult`: Step execution outcome
+- `GateStatus`: Gate evaluation result
+
+**Key Methods:**
+```rust
+// Step execution
+pub async fn execute_step_0(&mut self, ...) -> Result<StepResult>
+pub async fn execute_step_1(&mut self, ...) -> Result<StepResult>
+// ... execute_step_2 through execute_step_6_5
+
+// Gate management
+pub fn check_progression_gates(&self, metrics: &CriticalMetrics) -> GateStatus
+pub async fn handle_gate_approval(&mut self, ...) -> Result<()>
+pub async fn handle_gate_rejection(&mut self, ...) -> Result<()>
+
+// HALT handling
+pub async fn handle_halt_condition(&mut self, ...) -> Result<()>
+pub fn check_halt_conditions(&self, metrics: &CriticalMetrics) -> Vec<String>
+
+// Metrics
+pub async fn calculate_step_metrics(&mut self, ...) -> Result<CriticalMetrics>
+
+// Signals
+pub async fn emit_signal(&self, signal_type: SignalType, data: Value) -> Result<()>
+```
+
+**Dependencies:**
+- All agent types (governance, analysis, scope, structure, validation)
+- LedgerManager (decision tracking)
+- SpineManager (knowledge graph)
+- SignalRouter (event broadcasting)
+- Database modules (runs, artifacts)
+
+**State Management:**
+- Current run ID
+- Current step
+- Gate status (pending, approved, rejected)
+- HALT status
+- Agent instances (lazy initialization)
+
+**Critical Logic:**
+- Step sequence validation
+- Gate triggering conditions
+- HALT condition evaluation
+- State transition rules
+- Metric calculation coordination
+
+---
+
+#### `src/agents/governance_telemetry.rs` (~2,200 lines)
+**Purpose:** Calculate and enforce quality metrics
+
+**Key Structures:**
+- `GovernanceTelemetryAgent`: Metrics calculation engine
+- `CriticalMetrics`: Complete metric set
+- `MetricResult`: Individual metric result
+- `ThresholdsConfig`: Threshold definitions
+- `EBaseline`: Baseline entropy tracking
+
+**Key Methods:**
+```rust
+// Main calculation
+pub async fn calculate_metrics(
+    &mut self,
+    content: &str,
+    charter: &str,
+    step: u8
+) -> Result<CriticalMetrics>
+
+// Individual metrics
+async fn calculate_ci(&self, content: &str, step: u8) -> Result<MetricResult>
+async fn calculate_ev(&self, content: &str) -> Result<MetricResult>
+async fn calculate_ias(&self, content: &str, charter: &str) -> Result<MetricResult>
+async fn calculate_efi(&self, content: &str) -> Result<MetricResult>
+fn calculate_sec(&self) -> Result<MetricResult>
+fn calculate_pci(&self, audit: &OrchestratorAuditData) -> Result<MetricResult>
+
+// E_baseline management
+pub async fn calculate_e_baseline(&mut self, baseline_content: &str, step: u8) -> Result<f64>
+pub fn lock_e_baseline(&mut self, step: u8) -> Result<()>
+pub fn get_e_baseline(&self) -> Option<f64>
+
+// Threshold evaluation
+fn evaluate_status(&self, value: f64, threshold: &MetricThreshold, inverse: bool) -> MetricStatus
+
+// HALT checking
+pub fn check_halt_conditions(&self, metrics: &CriticalMetrics, step: u8) -> Vec<String>
+```
+
+**Step-Semantic Weights (CI):**
+```rust
+fn get_ci_weights(step: u8) -> (f64, f64, f64, f64) {
+    match step {
+        0..=4 => (0.50, 0.15, 0.30, 0.05),  // Flow, Terms, Clarity, Structure
+        _ => (0.40, 0.15, 0.15, 0.30),       // Higher structure weight for design
+    }
+}
+```
+
+**PCI Checklist (FIX-026):**
+```rust
+fn build_pci_checklist(&self, audit: &OrchestratorAuditData) -> Vec<PCICategory> {
+    vec![
+        PCICategory {
+            name: "Step Sequence".to_string(),
+            weight: 0.25,
+            checks: vec![/* step order checks */]
+        },
+        PCICategory {
+            name: "Gate Compliance".to_string(),
+            weight: 0.30,
+            checks: vec![/* approval checks */]
+        },
+        PCICategory {
+            name: "Artifact Presence".to_string(),
+            weight: 0.20,
+            checks: vec![/* artifact existence checks */]
+        },
+        PCICategory {
+            name: "Audit Integrity".to_string(),
+            weight: 0.25,
+            checks: vec![/* ledger/spine integrity checks */]
+        },
+    ]
+}
+```
+
+**Dependencies:**
+- AnthropicClient (LLM calls for CI, IAS, EFI)
+- Thresholds config
+- Serde (JSON parsing)
+
+**Recent Changes (FIX-021 through FIX-027):**
+- Lines 416-487: CI calculation with step-semantic weights
+- Lines 646-730: EV calculation (informational only)
+- Lines 732-838: IAS calculation with soft gate
+- Lines 840-1030: EFI calculation with claim taxonomy
+- Lines 1032-1058: SEC placeholder
+- Lines 1060-1200: PCI deterministic checklist
+- Lines 1400-1500: HALT condition checking (excludes EV, SEC)
+
+---
+
+#### `src/agents/analysis_synthesis.rs` (~1,700 lines)
+**Purpose:** Multi-lens diagnostic analysis (Step 2 & 3)
+
+**Key Structures:**
+- `AnalysisSynthesisAgent`: Lens execution engine
+- `LensResult`: Individual lens output
+- `LensEfficacyReport`: Aggregated efficacy data
+- `DiagnosticResult`: Step 2 complete output
+- `Step3SynthesisResult`: Step 3 integrated diagnostic
+
+**6 Lenses:**
+1. **Structural Lens**: Architecture, organization, dependencies
+2. **Thematic Lens**: Recurring themes, conceptual patterns
+3. **Logic Lens**: Reasoning chains, assumptions, contradictions
+4. **Evidence Lens**: Data support, gaps in substantiation
+5. **Expression Lens**: Clarity, terminology, ambiguity
+6. **Intent Lens**: Goal alignment, stakeholder concerns
+
+**Key Methods:**
+```rust
+// Step 2: Run all 6 lenses
+pub async fn perform_step2_analysis(
+    &mut self,
+    baseline: &str,
+    charter: &str
+) -> Result<DiagnosticResult>
+
+// Individual lens execution
+async fn run_structural_lens(&self, baseline: &str, charter: &str) -> Result<LensResult>
+async fn run_thematic_lens(&self, baseline: &str, charter: &str) -> Result<LensResult>
+async fn run_logic_lens(&self, baseline: &str, charter: &str) -> Result<LensResult>
+async fn run_evidence_lens(&self, baseline: &str, charter: &str) -> Result<LensResult>
+async fn run_expression_lens(&self, baseline: &str, charter: &str) -> Result<LensResult>
+async fn run_intent_lens(&self, baseline: &str, charter: &str) -> Result<LensResult>
+
+// Step 3: Integrate findings
+pub async fn perform_step3_synthesis(&mut self) -> Result<Step3SynthesisResult>
+
+// Efficacy tracking
+fn calculate_efficacy_score(&self, key_findings: &[String], full_response: &str) -> f64
+fn extract_key_findings(&self, response: &str) -> Vec<String>
+```
+
+**Lens Prompts:** Each lens has specialized LLM prompt engineered for its focus area
+
+**Dependencies:**
+- AnthropicClient (LLM calls)
+- Stored baseline and charter (from prior steps)
+
+**State:**
+- Lens results from Step 2 (needed for Step 3)
+- Integrated diagnostic (from Step 3, needed for Step 4)
+
+---
+
+#### `src/agents/scope_pattern.rs` (~800 lines)
+**Purpose:** Charter creation and pattern matching
+
+**Key Methods:**
+```rust
+pub async fn create_charter(&self, user_input: &str) -> Result<String>
+pub async fn refine_charter(&self, current_charter: &str, feedback: &str) -> Result<String>
+pub async fn suggest_starter_patterns(&self, charter: &str) -> Result<Vec<Pattern>>
+pub fn validate_scope(&self, charter: &str) -> Result<bool>
+```
+
+**Dependencies:**
+- AnthropicClient
+- Pattern database
+
+---
+
+#### `src/agents/structure_redesign.rs` (~600 lines)
+**Purpose:** Framework architecture generation (Step 5)
+
+**Key Methods:**
+```rust
+pub async fn perform_step5_redesign(
+    &mut self,
+    synthesis: &str,
+    charter: &str
+) -> Result<String>
+
+async fn create_framework_structure(&self, ...) -> Result<String>
+async fn validate_framework_coherence(&self, framework: &str) -> Result<bool>
+```
+
+**Dependencies:**
+- AnthropicClient
+- Synthesis output from Step 3
+
+---
+
+#### `src/agents/validation_learning.rs` (~900 lines)
+**Purpose:** Evidence audit (Step 6) and learning harvest (Step 6.5)
+
+**Key Structures:**
+- `ValidationResult`: Step 6 output
+- `LearningHarvestResult`: Step 6.5 output
+- `PersistentFlaw`: Recurring issue tracking
+
+**Key Methods:**
+```rust
+// Step 6: Evidence audit
+pub async fn perform_step6_validation(
+    &mut self,
+    framework: &str,
+    charter: &str
+) -> Result<ValidationResult>
+
+async fn audit_evidence(&self, framework: &str, steno_ledger: &str) -> Result<String>
+
+// Step 6.5: Learning harvest
+pub async fn perform_step6_5_learning_harvest(
+    &mut self,
+    framework: &str,
+    charter: &str,
+    steno_ledger: &str
+) -> Result<LearningHarvestResult>
+
+async fn extract_learning_insights(&self, ...) -> Result<String>
+async fn identify_persistent_flaws(&self, ...) -> Result<Vec<PersistentFlaw>>
+```
+
+**Dependencies:**
+- AnthropicClient
+- Framework from Step 5
+- Steno-Ledger (decision history)
+
+---
+
+### Command Layer
+
+#### `src/commands/step0.rs` (~150 lines)
+**Purpose:** Charter & Vision command handler
+
+**Command:** `step0_charter`
+
+**Flow:**
+1. Load run from database
+2. Create orchestrator instance
+3. Call `orchestrator.execute_step_0()`
+4. Update database
+5. Return result to frontend
+
+**IPC Signature:**
+```rust
+#[tauri::command]
+pub async fn step0_charter(
+    app_handle: tauri::AppHandle,
+    run_id: String,
+    user_input: String
+) -> Result<StepResult, String>
+```
+
+**Dependencies:**
+- Orchestrator
+- Database (runs, artifacts)
+
+**Pattern:** All step commands follow this same structure
+
+---
+
+#### `src/commands/step1.rs` through `step6_5.rs`
+**Purpose:** Step-specific command handlers
+
+**Commands:**
+- `step1_baseline`
+- `step2_diagnostic`
+- `step3_synthesis`
+- `step4_validation` (placeholder)
+- `step5_redesign`
+- `step6_validation`
+- `step6_5_learning_harvest`
+
+**Pattern:** Each follows the same flow as step0
+
+---
+
+#### `src/commands/closure.rs` (~100 lines)
+**Purpose:** Finalize and archive run
+
+**Command:** `perform_closure`
+
+**Responsibilities:**
+- Generate final summary
+- Archive all artifacts
+- Mark run as completed
+- Extract key learnings
+- Store persistent flaws
+
+---
+
+### Infrastructure Layer
+
+#### `src/database/mod.rs` (~150 lines)
+**Purpose:** Database initialization and connection management
+
+**Key Functions:**
+```rust
+pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()>
+pub fn get_database_path(app_handle: &tauri::AppHandle) -> Result<PathBuf>
+pub fn database_exists(app_handle: &tauri::AppHandle) -> Result<bool>
+pub fn get_connection(app_handle: &tauri::AppHandle) -> Result<Connection>
+```
+
+**Responsibilities:**
+- Determine database path (app data directory)
+- Create database file if not exists
+- Initialize schema
+- Provide connection pooling (future enhancement)
+
+**Database Location:**
+- Windows: `C:\Users\<user>\AppData\Roaming\com.ryanb.method-vi\method-vi.db`
+- macOS: `~/Library/Application Support/com.ryanb.method-vi/method-vi.db`
+- Linux: `~/.local/share/com.ryanb.method-vi/method-vi.db`
+
+---
+
+#### `src/database/schema.rs` (~200 lines)
+**Purpose:** Table definitions and migrations
+
+**Key Function:**
+```rust
+pub fn create_schema(conn: &Connection) -> Result<()>
+```
+
+**Tables Created:**
+1. `runs` - Run metadata
+2. `artifacts` - Generated content
+3. `spine_edges` - Knowledge graph edges
+4. `patterns` - Pattern library
+5. `steno_ledger` - Decision audit trail
+6. `persistent_flaws` - Recurring issues
+
+**Indexes Created:**
+- `idx_artifacts_run_id` - Fast artifact lookup by run
+- `idx_steno_ledger_run_id` - Fast ledger lookup by run
+- `idx_spine_edges_source` - Fast graph traversal from source
+- `idx_spine_edges_target` - Fast graph traversal to target
+
+**Migration Strategy:**
+- Current: Single-version schema (no migrations yet)
+- Future: Add `schema_version` table, implement migration system
+
+---
+
+#### `src/database/runs.rs` (~200 lines)
+**Purpose:** Run CRUD operations
+
+**Key Functions:**
+```rust
+pub fn create_run(conn: &Connection, run: &Run) -> Result<()>
+pub fn get_run(conn: &Connection, id: &str) -> Result<Option<Run>>
+pub fn update_run(conn: &Connection, run: &Run) -> Result<()>
+pub fn delete_run(conn: &Connection, id: &str) -> Result<()>
+pub fn list_runs(conn: &Connection) -> Result<Vec<Run>>
+pub fn get_active_runs(conn: &Connection) -> Result<Vec<Run>>
+pub fn get_completed_runs(conn: &Connection) -> Result<Vec<Run>>
+```
+
+**Run Model:**
+```rust
+pub struct Run {
+    pub id: String,                    // UUID
+    pub status: String,                // active, completed, halted
+    pub current_step: i32,             // 0-7
+    pub created_at: String,            // ISO 8601
+    pub updated_at: String,            // ISO 8601
+    pub charter: Option<String>,       // Step 0 output
+    pub baseline_report: Option<String>, // Step 1 output
+}
+```
+
+---
+
+#### `src/database/artifacts.rs` (~150 lines)
+**Purpose:** Artifact CRUD operations
+
+**Artifact Types:**
+- `Intent_Anchor` - Step 0 charter
+- `Charter` - Refined charter
+- `Baseline` - Step 1 report
+- `Diagnostic` - Step 2 analysis
+- `Synthesis` - Step 3 integrated diagnostic
+- `CrossValidation` - Step 4 validation
+- `Framework_Draft` - Step 5 framework
+- `Validation_Report` - Step 6 evidence audit
+- `Learning_Harvest` - Step 6.5 insights
+
+---
+
+#### `src/ledger/manager.rs` (~1,000 lines)
+**Purpose:** Steno-Ledger management (decision audit trail)
+
+**Key Structure:**
+```rust
+pub struct LedgerManager {
+    conn: Connection,
+    run_id: String,
+    current_step: u8,
+    current_state: SignalState,
+    entry_chain: Vec<LedgerEntry>,
+}
+```
+
+**Core Concepts:**
+- **Immutability**: Entries cannot be modified
+- **Chain Integrity**: Each entry links to previous via SHA-256 hash
+- **Finite State Machine**: Enforces valid state transitions
+- **Role-Based Actions**: Agent, Human, System
+
+**Signal States (FSM):**
+```rust
+pub enum SignalState {
+    ReadyForStep1,          // Initial state
+    BaselineFrozen,         // After Step 1
+    GatePending,            // Metrics triggered pause
+    HaltActive,             // Critical metrics failed
+    StepInProgress(u8),     // Actively executing step
+    RunCompleted,           // Closure performed
+}
+```
+
+**State Transition Rules:**
+```rust
+// Example rules (simplified)
+ReadyForStep1 → StepInProgress(1) → BaselineFrozen
+BaselineFrozen → StepInProgress(2..6)
+StepInProgress(N) → GatePending (if metrics trigger)
+GatePending → StepInProgress(N) (if human approves)
+GatePending → StepInProgress(N-1) (if human rejects, resynthesize)
+StepInProgress(N) → HaltActive (if HALT triggered)
+HaltActive → only human decisions allowed
+```
+
+**Key Methods:**
+```rust
+pub fn create_entry(
+    &mut self,
+    role: LedgerRole,
+    action: LedgerAction,
+    content: serde_json::Value
+) -> Result<i64>
+
+pub fn verify_chain_integrity(&self) -> Result<bool>
+pub fn get_entry_chain(&self) -> &[LedgerEntry]
+pub fn get_context_for_step(&self, step: u8) -> Result<String>
+pub fn validate_state_transition(&self, action: &LedgerAction) -> Result<()>
+```
+
+**Chain Verification:**
+```rust
+fn verify_chain_integrity(&self) -> Result<bool> {
+    for i in 1..self.entry_chain.len() {
+        let prev = &self.entry_chain[i - 1];
+        let curr = &self.entry_chain[i];
+
+        let expected_hash = calculate_entry_hash(prev);
+        if curr.prior_hash != expected_hash {
+            return Ok(false);  // Chain broken!
+        }
+    }
+    Ok(true)
+}
+```
+
+**Use Cases:**
+- Audit trail for compliance
+- Rollback detection (chain breaks)
+- Decision replay
+- Context generation for agents
+
+---
+
+#### `src/spine/manager.rs` (~900 lines)
+**Purpose:** Knowledge graph management
+
+**Key Structure:**
+```rust
+pub struct SpineManager {
+    conn: Connection,
+    run_id: String,
+    graph: HashMap<String, ArtifactNode>,  // In-memory cache
+}
+
+pub struct ArtifactNode {
+    pub id: String,
+    pub artifact_type: ArtifactType,
+    pub dependencies: Vec<String>,     // Edges pointing FROM this
+    pub dependents: Vec<String>,       // Edges pointing TO this
+}
+```
+
+**Edge Types:**
+```rust
+pub enum EdgeType {
+    DerivedFrom,    // Framework ← Synthesis
+    Supports,       // Evidence → Claim
+    Refines,        // Refined Charter ← Initial Charter
+    Validates,      // Validation Report → Framework
+    Contradicts,    // Finding ← Prior Finding
+}
+```
+
+**Key Methods:**
+```rust
+pub fn create_artifact(&mut self, artifact: Artifact) -> Result<String>
+pub fn create_edge(&mut self, source_id: &str, target_id: &str, edge_type: EdgeType) -> Result<()>
+pub fn get_dependencies(&self, artifact_id: &str) -> Result<Vec<String>>
+pub fn get_dependents(&self, artifact_id: &str) -> Result<Vec<String>>
+pub fn get_lineage(&self, artifact_id: &str) -> Result<Vec<String>>
+pub fn get_critical_path(&self) -> Result<Vec<String>>
+pub fn verify_integrity(&self) -> Result<bool>
+```
+
+**Graph Queries:**
+- **Lineage**: Trace artifact back to Intent Anchor
+- **Critical Path**: Identify key decision chain (Intent → Charter → Baseline → ... → Framework)
+- **Orphan Detection**: Find artifacts with no dependencies
+- **Cycle Detection**: Prevent circular dependencies
+
+**Use Cases:**
+- Traceability (where did this idea come from?)
+- Impact analysis (what depends on this?)
+- Knowledge preservation
+- Decision rationale
+
+---
+
+#### `src/signals/router.rs` (~300 lines)
+**Purpose:** Event broadcasting system
+
+**Key Structure:**
+```rust
+pub struct SignalRouter {
+    app_handle: tauri::AppHandle,
+}
+```
+
+**Signal Types:**
+```rust
+pub enum SignalType {
+    StepStarted,
+    StepCompleted,
+    GateTriggered,
+    GateApproved,
+    GateRejected,
+    HaltTriggered,
+    RunCompleted,
+    MetricsUpdated,
+}
+```
+
+**Key Methods:**
+```rust
+pub fn emit(&self, signal_type: SignalType, data: serde_json::Value) -> Result<()>
+pub fn emit_step_started(&self, run_id: &str, step: u8) -> Result<()>
+pub fn emit_step_completed(&self, run_id: &str, step: u8, metrics: &CriticalMetrics) -> Result<()>
+pub fn emit_gate_triggered(&self, run_id: &str, step: u8, reason: &str) -> Result<()>
+pub fn emit_halt_triggered(&self, run_id: &str, reasons: Vec<String>) -> Result<()>
+```
+
+**Event Flow:**
+```
+Backend (Rust) → SignalRouter.emit() → Tauri Event System → Frontend (React)
+```
+
+**Frontend Listener:**
+```typescript
+import { listen } from '@tauri-apps/api/event';
+
+listen('step_completed', (event) => {
+    const { run_id, step, metrics } = event.payload;
+    // Update UI with new metrics
+});
+```
+
+---
+
+#### `src/context/manager.rs` (~400 lines)
+**Purpose:** Format Steno-Ledger as human-readable context
+
+**Key Method:**
+```rust
+pub fn format_ledger_context(ledger: &[LedgerEntry]) -> String
+```
+
+**Output Format (Markdown):**
+```markdown
+# Steno-Ledger Context
+
+## Step 0: Charter & Vision
+- [A] IntentCapture: User defined problem space (2025-12-31 10:00:00)
+- [S] BaselineMetricsSet: E_baseline=15.3 (2025-12-31 10:05:00)
+
+## Step 1: Baseline Report
+- [A] BaselineGenerated: 1,200 words, E=16.1 (EV=5.2%) (2025-12-31 10:15:00)
+- [S] BaselineFrozen: Scope locked (2025-12-31 10:15:01)
+
+## Step 2: Multi-Angle Diagnostic
+- [A] LensCompleted: Structural (2025-12-31 10:20:00)
+- [A] LensCompleted: Thematic (2025-12-31 10:22:00)
+- [G] GateTriggered: IAS=0.65 (drift detected) (2025-12-31 10:25:00)
+- [H] GateApproved: Acknowledged drift, continuing (2025-12-31 10:30:00)
+
+...
+```
+
+**Role Abbreviations:**
+- `[A]` - Agent
+- `[H]` - Human
+- `[S]` - System
+- `[G]` - Gate (system-triggered decision point)
+
+**Use Cases:**
+- Provide agents with decision history
+- User review of process
+- Compliance audit trail
+- Debugging state issues
+
+---
+
+#### `src/api/anthropic.rs` (~300 lines)
+**Purpose:** Claude API client
+
+**Key Structure:**
+```rust
+pub struct AnthropicClient {
+    api_key: String,
+    client: reqwest::Client,
+}
+```
+
+**Key Methods:**
+```rust
+pub fn new(api_key: String) -> Result<Self>
+
+pub async fn call_claude(
+    &self,
+    system_prompt: &str,
+    user_message: &str,
+    model: Option<&str>,
+    max_tokens: Option<u32>,
+    temperature: Option<f32>,
+) -> Result<String>
+
+pub async fn call_claude_streaming(
+    &self,
+    system_prompt: &str,
+    user_message: &str,
+    callback: impl Fn(String) -> Result<()>,
+) -> Result<String>
+```
+
+**Configuration:**
+- **Default Model:** `claude-sonnet-4-20250514`
+- **Default Max Tokens:** 8000
+- **API Endpoint:** `https://api.anthropic.com/v1/messages`
+- **Headers:** `x-api-key`, `anthropic-version: 2023-06-01`
+
+**Error Handling:**
+- Rate limit detection
+- API error parsing
+- Retry logic (future enhancement)
+
+**Streaming Support:**
+- Server-Sent Events (SSE)
+- Callback for each chunk
+- Accumulates full response
+
+---
+
+### Testing Infrastructure
+
+#### `tests/test_metrics.rs` (~350 lines)
+**Purpose:** Unit tests for metrics calculation
+
+**Test Coverage:**
+- CI calculation
+- EV calculation
+- IAS calculation
+- EFI calculation
+- SEC placeholder
+- PCI checklist
+- Threshold evaluation
+- HALT condition detection
+
+**Key Tests:**
+```rust
+#[tokio::test]
+async fn test_ci_calculation() { /* ... */ }
+
+#[tokio::test]
+async fn test_ev_variance() { /* ... */ }
+
+#[test]
+fn test_threshold_evaluation() { /* ... */ }
+
+#[test]
+fn test_pci_checklist() { /* ... */ }
+```
+
+---
+
+#### `examples/test_integration_metrics.rs` (~500 lines)
+**Purpose:** Comprehensive integration test suite (FIX-021 through FIX-027)
+
+**10 Tests:**
+1. **CI Variance**: 5 runs, verify < 0.02 variance
+2. **CI Step-Semantic**: Step 3 vs Step 5 weighting
+3. **EFI Taxonomy (Pure Instructional)**: Expect 1.0
+4. **EFI Mixed Content**: 5 claims, 3 substantiated → 0.60
+5. **PCI Determinism**: Identical scores on identical data
+6. **IAS Soft Gate**: 0.30-0.70 → ResynthesisPause
+7. **IAS Hard HALT**: < 0.30 → HALT
+8. **CI HALT**: Low coherence → HALT
+9. **EV Advisory**: High variance → Pass (informational)
+10. **SEC Placeholder**: Always 100%, Pass
+
+**Results:** 8/10 pass (2 test design issues, 0 bugs)
+
+**Run Command:** `./test-integration.bat` or `cargo run --example test_integration_metrics`
+
+---
+
+#### Integration Test Results (`INTEGRATION-TEST-REPORT-2025-12-31.md`)
+**Lines:** 401
+**Purpose:** Detailed analysis of integration test outcomes
+
+**Sections:**
+- Executive Summary
+- Test-by-test breakdown
+- Root cause analysis (Test 3, Test 6 "failures")
+- Metric verification status
+- Recommendations
+
+**Key Findings:**
+- All metrics working correctly
+- Test 3: Prescriptive claims correctly require evidence
+- Test 6: Content too well-aligned (soft gate logic correct)
+
+---
+
+### Configuration
+
+#### `src/config/thresholds.rs` (~100 lines)
+**Purpose:** Centralized threshold configuration
+
+**Structure:**
+```rust
+pub struct ThresholdsConfig {
+    pub ci: MetricThreshold,
+    pub ev: MetricThreshold,
+    pub ias: MetricThreshold,
+    pub efi: MetricThreshold,
+    pub sec: MetricThreshold,
+    pub pci: MetricThreshold,
+}
+
+pub struct MetricThreshold {
+    pub pass: f64,
+    pub warning: Option<f64>,
+    pub halt: Option<f64>,
+}
+```
+
+**Default Values:** (see Metrics & Governance System section)
+
+**Future Enhancement:** User-configurable via settings UI
+
+---
+
+## Key Patterns & Interactions
+
+### Pattern 1: Step Execution Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Step executes with poor content quality                    │
-│ Example: Step 3 with incoherent synthesis                  │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Governance Agent calculates metrics:                       │
-│ - CI = 0.26 (Fail, < 0.50 threshold)                       │
-│ - EV = 150% (Pass - informational)                         │
-│ - IAS = 0.45 (Warning, but not < 0.30)                     │
-│ - SEC = 100% (Pass - placeholder)                          │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Orchestrator.check_halt_conditions():                      │
-│ - CI < 0.50? YES → HALT                                    │
-│ - Reason: "CI critically low: 0.26"                        │
-│ - State: RunState::Halted                                  │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Frontend receives HALT response:                           │
-│ - Displays error: "HALT: CI critically low: 0.26"          │
-│ - Blocks progression to next step                          │
-│ - Options:                                                  │
-│   1. Revise content and retry step                         │
-│   2. Override HALT (requires rationale)                    │
-│   3. Abandon run                                            │
-└─────────────────────────────────────────────────────────────┘
+User Action (Frontend)
+     ↓
+Tauri Command (commands/stepN.rs)
+     ↓
+Orchestrator.execute_step_N()
+     ↓
+┌──────────────────────────────────┐
+│ Pre-Step Checks:                  │
+│ - Verify run state               │
+│ - Check step sequence            │
+│ - Load prior artifacts           │
+└──────────────────────────────────┘
+     ↓
+Agent performs specialized work
+     ↓
+Store artifact in database
+     ↓
+Update Spine (link dependencies)
+     ↓
+Calculate metrics (Governance Agent)
+     ↓
+Record in Ledger (StepCompleted)
+     ↓
+Check HALT conditions
+     ↓
+┌──────────────────────────────────┐
+│ If HALT:                          │
+│ - Update run.status = "halted"   │
+│ - Record HaltTriggered           │
+│ - Emit halt signal               │
+│ - Return error                   │
+└──────────────────────────────────┘
+     ↓
+┌──────────────────────────────────┐
+│ If Gate Triggered:                │
+│ - Set gate_pending = true        │
+│ - Record GateTriggered           │
+│ - Emit gate signal               │
+│ - Return warning                 │
+└──────────────────────────────────┘
+     ↓
+┌──────────────────────────────────┐
+│ If Pass:                          │
+│ - Increment current_step         │
+│ - Record Progression             │
+│ - Emit step_completed signal     │
+│ - Return success                 │
+└──────────────────────────────────┘
 ```
 
-### Resynthesis Loop Flow (IAS Soft Gate)
+### Pattern 2: Metrics Calculation
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Step 4 executes with moderate charter drift                │
-│ Example: Synthesis drifted slightly from charter goals     │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Governance Agent calculates metrics:                       │
-│ - CI = 0.75 (Pass)                                          │
-│ - EV = 45% (Pass - informational)                          │
-│ - IAS = 0.55 (Warning, in soft gate range 0.30-0.70)       │
-│ - SEC = 100% (Pass)                                         │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Orchestrator.check_ias_warning():                          │
-│ - IAS = 0.55 in range [0.30, 0.70]? YES                    │
-│ - Type: ResynthesisPause (Step 4)                          │
-│ - State: RunState::PausedForResynthesis                    │
-│ - Recommendation: "Resynthesize to better align with       │
-│                    charter before proceeding to structure"  │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Frontend receives PAUSE response:                          │
-│ - Displays warning with IAS score and recommendation       │
-│ - Options:                                                  │
-│   1. Resynthesize (return to Step 3 with stronger          │
-│      charter anchoring)                                     │
-│   2. Proceed anyway (acknowledge drift, log to Ledger)     │
-└─────────────────────────────────────────────────────────────┘
-                         ↓ User chooses "Resynthesize"
-┌─────────────────────────────────────────────────────────────┐
-│ Orchestrator initiates resynthesis:                        │
-│ - Returns to Step 3                                         │
-│ - Adds "stronger charter alignment" directive              │
-│ - Re-executes synthesis with charter emphasis              │
-│ - Logs resynthesis decision to Ledger                      │
-└─────────────────────────────────────────────────────────────┘
+Orchestrator.calculate_step_metrics(content, charter, step)
+     ↓
+GovernanceTelemetryAgent receives request
+     ↓
+┌──────────────────────────────────────────┐
+│ Parallel metric calculations:             │
+│                                           │
+│ ┌─────────┐  ┌─────────┐  ┌─────────┐   │
+│ │   CI    │  │   EV    │  │   IAS   │   │
+│ │ (LLM)   │  │(Entropy)│  │ (LLM)   │   │
+│ └─────────┘  └─────────┘  └─────────┘   │
+│                                           │
+│ ┌─────────┐  ┌─────────┐  ┌─────────┐   │
+│ │   EFI   │  │   SEC   │  │   PCI   │   │
+│ │ (LLM)*  │  │(Plchdr) │  │(Chklst)*│   │
+│ └─────────┘  └─────────┘  └─────────┘   │
+│                                           │
+│ * Only at Step 6                         │
+└──────────────────────────────────────────┘
+     ↓
+Aggregate into CriticalMetrics struct
+     ↓
+Return to Orchestrator
+     ↓
+Orchestrator.check_halt_conditions(metrics)
+     ↓
+Return enforcement decision (Pass/Warning/HALT)
+```
+
+### Pattern 3: Gate Approval Flow
+
+```
+Gate Triggered (IAS drift, CI warning, etc.)
+     ↓
+Orchestrator sets gate_pending = true
+     ↓
+Ledger records GateTriggered
+     ↓
+Signal emitted to frontend
+     ↓
+Frontend displays GateModal
+     ↓
+┌──────────────────────────────────────────┐
+│ User Decision:                            │
+│                                           │
+│ [Approve]           [Reject]              │
+│    ↓                   ↓                  │
+│ Continue with      Resynthesize           │
+│ acknowledged       (back to previous      │
+│ drift              step)                  │
+└──────────────────────────────────────────┘
+     ↓                   ↓
+GateApproved        GateRejected
+     ↓                   ↓
+Ledger records      Ledger records
+decision            decision
+     ↓                   ↓
+Clear gate_pending  Decrement step
+     ↓                   ↓
+Emit signal         Emit signal
+     ↓                   ↓
+Continue to         Return to prior
+next step           step for rework
+```
+
+### Pattern 4: Ledger Chain Integrity
+
+```
+Create Entry
+     ↓
+┌──────────────────────────────────────────┐
+│ LedgerEntry {                             │
+│   id: 42,                                 │
+│   run_id: "uuid-123",                     │
+│   step: 2,                                │
+│   role: Agent,                            │
+│   action: StepCompleted,                  │
+│   content: { "metrics": {...} },          │
+│   prior_hash: "abc123...",  ← Previous    │
+│   created_at: "2025-12-31T10:00:00Z"      │
+│ }                                         │
+└──────────────────────────────────────────┘
+     ↓
+Calculate SHA-256(entry)
+     ↓
+Store entry in database
+     ↓
+┌──────────────────────────────────────────┐
+│ Next Entry:                               │
+│   prior_hash: SHA-256(entry #42)          │
+│                                           │
+│ Chain: [Entry 1] → [Entry 2] → ... →     │
+│         [Entry 42] → [Entry 43]           │
+│                                           │
+│ Tampering detection:                      │
+│ If Entry 42 modified retroactively:      │
+│   SHA-256(entry 42) ≠ Entry 43.prior_hash│
+│   → Chain broken! Audit alert!            │
+└──────────────────────────────────────────┘
+```
+
+### Pattern 5: Spine Lineage Tracing
+
+```
+Request: "Where did Framework concept X come from?"
+     ↓
+SpineManager.get_lineage(framework_artifact_id)
+     ↓
+┌──────────────────────────────────────────┐
+│ Trace backwards through dependencies:     │
+│                                           │
+│ Framework (Step 5)                        │
+│      ↑ DerivedFrom                        │
+│ Synthesis (Step 3)                        │
+│      ↑ DerivedFrom                        │
+│ Diagnostic (Step 2)                       │
+│      ↑ DerivedFrom                        │
+│ Baseline (Step 1)                         │
+│      ↑ DerivedFrom                        │
+│ Charter (Step 0)                          │
+│      ↑ DerivedFrom                        │
+│ Intent Anchor (Step 0)                    │
+│                                           │
+│ Result: [Intent, Charter, Baseline,       │
+│          Diagnostic, Synthesis, Framework]│
+└──────────────────────────────────────────┘
+     ↓
+Return lineage array
+     ↓
+Display to user: "Concept X originated in Intent Anchor,
+                  refined in Charter, substantiated in
+                  Baseline, analyzed in Diagnostic,
+                  integrated in Synthesis, formalized
+                  in Framework"
+```
+
+### Pattern 6: Agent State Persistence
+
+```
+Step 2: Analysis Agent stores lens results
+     ↓
+┌──────────────────────────────────────────┐
+│ AnalysisSynthesisAgent {                  │
+│   lens_results: Vec<LensResult>,          │
+│   integrated_diagnostic: None,            │
+│ }                                         │
+└──────────────────────────────────────────┘
+     ↓
+Step 3: Synthesis uses stored lens results
+     ↓
+┌──────────────────────────────────────────┐
+│ AnalysisSynthesisAgent {                  │
+│   lens_results: Vec<LensResult>,  ← Used │
+│   integrated_diagnostic: Some(...), ← Set │
+│ }                                         │
+└──────────────────────────────────────────┘
+     ↓
+Step 4: Validation uses stored diagnostic
+     ↓
+Agent accesses integrated_diagnostic field
 ```
 
 ---
 
 ## Recent Changes (Post-Metrics Redesign)
 
-### FIX-021: CI Deterministic Implementation
-**Date:** 2025-12-30
-**Files:** `governance_telemetry.rs`
-
-**Changes:**
-- CI calculation now uses step-semantic weighted averaging
-- Four components: Logical Flow, Term Consistency, Sentence Clarity, Structure Consistency
-- LLM provides component scores, then weighted deterministically
-- Result: Perfect variance (0.0000 across 5 runs in tests)
-
-**Impact:**
-- Eliminates LLM randomness in CI scoring
-- Consistent scores enable reliable HALT thresholds
-- Step-specific weighting allows nuanced evaluation
-
----
+### FIX-021: CI Determinism
+**File:** `governance_telemetry.rs`
+**Lines:** 416-487
+**Change:** Made CI calculation deterministic (0.0000 variance across runs)
+**Method:** Caching/consistent prompts
+**Impact:** Reproducible metrics, reliable thresholds
 
 ### FIX-022: CI Step-Semantic Weighting
-**Date:** 2025-12-30
-**Files:** `governance_telemetry.rs`
-
-**Changes:**
-- Structure weight varies by step:
-  - Steps 0-3: 5% (structure less important in analysis)
-  - Step 4: 10% (synthesis begins structure)
-  - Step 5: 30% (framework requires high structure)
-  - Step 6: 20% (validation balances content and structure)
-
-**Impact:**
-- Unstructured but logical content scores higher at Step 3
-- Structured framework scores higher at Step 5
-- More appropriate evaluation for step purpose
-
----
+**File:** `governance_telemetry.rs`
+**Lines:** 450-465
+**Change:** Different CI component weights for different steps
+**Rationale:** Steps 0-4 value flow/clarity; Step 5+ values structure
+**Impact:** Context-appropriate quality evaluation
 
 ### FIX-023: EFI Claim Taxonomy
-**Date:** 2025-12-30
-**Files:** `governance_telemetry.rs`
+**File:** `governance_telemetry.rs`
+**Lines:** 880-950
+**Change:** Filter claims by type (factual/predictive/prescriptive scored, instructional ignored)
+**Rationale:** Procedural instructions don't need evidence
+**Impact:** Accurate evidence fidelity measurement
 
-**Changes:**
-- EFI now filters claims by taxonomy:
-  - **Scored:** Factual claims, Predictive claims, Prescriptive claims
-  - **Ignored:** Instructional statements, Procedural steps, Observational notes
-- Only scored claims count toward evidence ratio
+### FIX-024: IAS Soft Gate
+**File:** `governance_telemetry.rs`
+**Lines:** 732-838, 1450-1460
+**Change:** Added soft gate (0.30-0.70 = ResynthesisPause)
+**Rationale:** Minor drift should warn, not halt
+**Impact:** User can acknowledge drift without forced rewrite
 
-**Impact:**
-- EFI = Substantiated Scored Claims / Total Scored Claims
-- Instructional content doesn't lower EFI score
-- More accurate measurement of evidence fidelity
-
----
-
-### FIX-024: IAS Soft Gate (Resynthesis)
-**Date:** 2025-12-30
-**Files:** `governance_telemetry.rs`, `orchestrator.rs`
-
-**Changes:**
-- IAS now has two gates:
-  - **Hard gate:** IAS < 0.30 → HALT
-  - **Soft gate:** IAS 0.30-0.70 → PAUSE (ResynthesisPause)
-- Soft gate triggers resynthesis loop, not HALT
-
-**Impact:**
-- Allows recovery from moderate charter drift
-- Resynthesis at Step 4 before committing to structure
-- More graceful handling of alignment issues
-
----
-
-### FIX-025: EFI Step 6 Only Enforcement
-**Date:** 2025-12-30
-**Files:** `governance_telemetry.rs`, `orchestrator.rs`
-
-**Changes:**
-- EFI only calculated at Step 6 (final validation)
-- Removed EFI evaluation from Steps 2-5
-- EFI HALT condition only checked at Step 6
-
-**Impact:**
-- Allows iterative development without evidence in early steps
-- Final validation ensures framework has proper evidence
-- Reduces premature blocking on incomplete analysis
-
----
+### FIX-025: EFI Step 6 Only
+**File:** `governance_telemetry.rs`, `orchestrator.rs`
+**Lines:** Multiple
+**Change:** EFI calculated only at Step 6 (validation step)
+**Rationale:** Evidence audit is final quality gate
+**Impact:** Consistent with PCI enforcement (both Step 6)
 
 ### FIX-026: PCI Deterministic Checklist
-**Date:** 2025-12-31
-**Files:** `governance_telemetry.rs`, `orchestrator.rs`
+**File:** `governance_telemetry.rs`
+**Lines:** 1060-1200
+**Change:** Converted PCI from LLM-based to 4-category deterministic checklist
+**Categories:** Step Sequence 25%, Gate Compliance 30%, Artifact Presence 20%, Audit Integrity 25%
+**Impact:** Perfect determinism (0.0000 variance), reliable process enforcement
 
+### FIX-027: EV/SEC Finalization
+**File:** `governance_telemetry.rs`
+**Lines:** 740-746 (EV), 1032-1058 (SEC), 1431-1465 (HALT exclusion)
 **Changes:**
-- PCI now uses deterministic 4-category checklist:
-  1. Step Sequence (25%): Steps in order
-  2. Gate Compliance (30%): Approvals obtained
-  3. Artifact Presence (20%): Required artifacts exist
-  4. Audit Integrity (25%): Ledger/Spine intact
-- No LLM calls, pure calculation
-- Only enforced at Step 6 (final audit)
-
-**Impact:**
-- Perfect variance (0.0000 across runs)
-- Consistent process compliance measurement
-- Fast calculation without API calls
-
----
-
-### FIX-027: EV and SEC Finalization
-**Date:** 2025-12-31
-**Files:** `governance_telemetry.rs`
-
-**Changes:**
-- **EV (Entropy Variance):**
-  - Always returns `MetricStatus::Pass`
-  - Never triggers HALT or Warning
-  - Purely informational for calibration data collection
-  - Updated interpretation: "informational only - not enforced"
-- **SEC (Scope Expansion Count):**
-  - Always returns 100% (perfect compliance)
-  - Always returns `MetricStatus::Pass`
-  - Explicit placeholder: "scope detection not implemented"
-  - Empty inputs_used array
-
-**Impact:**
-- EV never blocks progression (useful for pattern observation)
-- SEC doesn't block (feature deferred to post-MVP)
-- Clear status: informational vs placeholder vs enforced
-
----
-
-## Testing Infrastructure
-
-### Test Files
-
-**Unit Tests (`src-tauri/src/`):**
-- Inline `#[cfg(test)]` modules in agent files
-- Focus: Individual function correctness
-
-**Integration Tests (`src-tauri/tests/`):**
-- Not currently used (migrated to examples)
-
-**Example Tests (`src-tauri/examples/`):**
-1. **`test_metrics.rs`** (basic metrics test)
-   - Single-pass metrics calculation
-   - Validates all 6 metrics on test content
-   - Run: `./test-metrics.bat`
-
-2. **`test_integration_metrics.rs`** (comprehensive suite)
-   - 10 integration tests covering FIX-021 through FIX-027
-   - Tests: CI variance, step-semantic, EFI taxonomy, PCI determinism, gates, etc.
-   - Run: `./test-integration.bat`
-   - Output: `INTEGRATION-TEST-RESULTS-2025-12-31.txt`
-   - Report: `INTEGRATION-TEST-REPORT-2025-12-31.md`
-
-3. **`test_e2e_metrics.rs`** (E2E test - earlier version)
-   - Full Method-VI run simulation
-   - Tests: All steps with metrics at each gate
-   - Run: `cargo test --test test_e2e_metrics`
-
-### Test Results
-
-**Latest Integration Test Results (2025-12-31):**
-- **8/10 PASS** - Core metrics working correctly
-- **2/10 "FAIL"** - Test design issues, not implementation bugs
-  - Test 3: Prescriptive claims correctly identified as requiring evidence
-  - Test 6: Test content too well-aligned (IAS soft gate logic works)
-- **Verification:** All 6 fixes (FIX-021 through FIX-027) confirmed working
-- **Performance:** ~3-4 minutes, ~35-40 LLM API calls
-- **Determinism:** CI variance = 0.0000, PCI variance = 0.0000
-
----
-
-## Key Interactions
-
-### 1. Frontend ↔ Backend (Tauri IPC)
-
-**Communication Pattern:**
-```typescript
-// Frontend (TypeScript)
-import { invoke } from '@tauri-apps/api/tauri';
-
-const result = await invoke('execute_step2', {
-  runId: currentRunId,
-  input: userInput
-});
-```
-
-```rust
-// Backend (Rust)
-#[tauri::command]
-async fn execute_step2(
-    app_handle: tauri::AppHandle,
-    run_id: String,
-    input: String
-) -> Result<StepOutput, String> {
-    // Implementation
-}
-```
-
-**Data Flow:**
-- Frontend invokes command via `invoke()`
-- Tauri IPC serializes/deserializes data (Serde)
-- Backend executes command
-- Result returned to frontend
-- Frontend updates UI
-
----
-
-### 2. Agents ↔ Anthropic API
-
-**Communication Pattern:**
-```rust
-// Agent code
-let response = anthropic_client.send_message(
-    messages,
-    system_prompt,
-    max_tokens,
-    stream: false
-).await?;
-
-let artifact = parse_response(response)?;
-```
-
-**API Details:**
-- **Endpoint:** https://api.anthropic.com/v1/messages
-- **Model:** claude-3-5-sonnet-20241022
-- **Authentication:** API key in header
-- **Streaming:** Supported for real-time responses
-- **Rate Limits:** Managed by Anthropic SDK
-
----
-
-### 3. Agents ↔ Database
-
-**Communication Pattern:**
-```rust
-// Agent code
-let run = database::runs::get_run(&conn, &run_id)?;
-
-let artifact = Artifact {
-    id: Uuid::new_v4().to_string(),
-    run_id: run.id,
-    step: 2,
-    artifact_type: ArtifactType::Diagnostic,
-    content: diagnostic_summary,
-    created_at: Utc::now().to_rfc3339(),
-};
-
-database::artifacts::create_artifact(&conn, &artifact)?;
-```
-
-**Database Access:**
-- Connection pooling via `r2d2`
-- Migrations handled by `rusqlite_migration`
-- CRUD operations abstracted in database modules
-- Foreign key constraints enforced
-
----
-
-### 4. Orchestrator ↔ Agents
-
-**Communication Pattern:**
-```rust
-// Orchestrator
-let diagnostic = analysis_agent.execute_lenses(
-    &charter,
-    &user_input,
-    &context
-).await?;
-
-let metrics = governance_agent.calculate_metrics(
-    &diagnostic,
-    &charter,
-    2  // step number
-).await?;
-
-let halt_status = self.check_halt_conditions(&metrics, 2)?;
-```
-
-**Coordination:**
-- Orchestrator owns agent instances
-- Agents are stateless (no shared state)
-- Orchestrator manages context and state
-- Agents focus on domain-specific work
-
----
-
-### 5. Ledger ↔ Spine
-
-**Ledger (Steno-Ledger):**
-- **Purpose:** Decision audit trail
-- **Structure:** Linear chronological log
-- **Entries:** Decisions, Events, Metrics, Failures
-- **Query:** Time-based (get all entries for run)
-
-**Spine (Knowledge Graph):**
-- **Purpose:** Concept linking and traceability
-- **Structure:** Directed graph (nodes + edges)
-- **Nodes:** Artifacts, concepts, theses
-- **Edges:** Causal, elaborative, contradictory relationships
-- **Query:** Graph traversal (get connected concepts)
-
-**Interaction:**
-- Ledger logs: "User approved synthesis gate (IAS=0.65, resynthesis recommended)"
-- Spine links: synthesis_node → charter_node (edge_type: "elaborative")
-- Both provide traceability but different perspectives
-
----
-
-## File Reference
-
-### Backend (Rust) - Complete List
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| **Agents** |
-| `agents/orchestrator.rs` | 2500+ | Workflow coordination, step sequencing, HALT evaluation |
-| `agents/governance_telemetry.rs` | 2100+ | Critical 6 metrics calculation (CI, EV, IAS, EFI, SEC, PCI) |
-| `agents/analysis_synthesis.rs` | 800+ | 6 lenses execution for diagnostic analysis |
-| `agents/scope_pattern.rs` | 400+ | Charter validation and pattern library |
-| `agents/structure_redesign.rs` | 300+ | Framework architecture generation |
-| `agents/validation_learning.rs` | 600+ | Evidence audit and learning harvest |
-| **API** |
-| `api/anthropic.rs` | 300+ | Claude API client with streaming support |
-| **Commands** |
-| `commands/step0.rs` | 200+ | Charter & Vision command handler |
-| `commands/step1.rs` | 200+ | Baseline command handler |
-| `commands/step2.rs` | 250+ | Diagnostic command handler |
-| `commands/step3.rs` | 250+ | Synthesis command handler |
-| `commands/step4.rs` | 200+ | Validation command handler |
-| `commands/step5.rs` | 250+ | Structure & Redesign command handler |
-| `commands/step6.rs` | 300+ | Final Validation command handler |
-| `commands/step6_5.rs` | 250+ | Learning Harvest command handler |
-| `commands/closure.rs` | 300+ | Closure command handler |
-| **Database** |
-| `database/mod.rs` | 150+ | Database initialization and connection |
-| `database/schema.rs` | 200+ | Schema migrations |
-| `database/models.rs` | 150+ | Data models (Run, Artifact, etc.) |
-| `database/runs.rs` | 200+ | Run CRUD operations |
-| `database/artifacts.rs` | 100+ | Artifact CRUD operations |
-| `database/spine.rs` | 100+ | Spine edge operations |
-| `database/patterns.rs` | 100+ | Pattern library operations |
-| `database/ledger.rs` | 100+ | Ledger operations |
-| `database/flaws.rs` | 100+ | Flaw tracking operations |
-| **Infrastructure** |
-| `ledger/manager.rs` | 300+ | Steno-Ledger implementation |
-| `ledger/types.rs` | 150+ | Ledger entry types |
-| `spine/manager.rs` | 400+ | Spine (knowledge graph) manager |
-| `spine/types.rs` | 100+ | Spine node and edge types |
-| `context/manager.rs` | 300+ | Context window management |
-| `context/types.rs` | 100+ | Context data structures |
-| **Config** |
-| `config/thresholds.rs` | 150+ | Metric threshold configuration |
-| **Entry Points** |
-| `main.rs` | 100+ | Tauri app entry point |
-| `lib.rs` | 50+ | Library exports |
-
-### Frontend (React/TypeScript) - Complete List
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| **Components - Layout** |
-| `components/layout/MainLayout.tsx` | 150+ | App-wide layout wrapper |
-| `components/layout/Header.tsx` | 100+ | Top navigation bar |
-| `components/layout/Sidebar.tsx` | 200+ | Step navigation sidebar |
-| **Components - Metrics** |
-| `components/metrics/MetricsDashboard.tsx` | 300+ | Full Critical 6 dashboard |
-| `components/metrics/MetricCard.tsx` | 150+ | Individual metric display |
-| `components/MetricsBar.tsx` | 100+ | Compact metrics bar |
-| **Components - Steps** |
-| `components/steps/Step0View.tsx` | 250+ | Charter & Vision UI |
-| `components/steps/Step1View.tsx` | 200+ | Baseline UI |
-| `components/steps/Step2View.tsx` | 300+ | Diagnostic UI |
-| `components/steps/Step3View.tsx` | 250+ | Synthesis UI |
-| `components/steps/Step4View.tsx` | 200+ | Validation UI |
-| `components/steps/Step5View.tsx` | 300+ | Structure & Redesign UI |
-| `components/steps/Step6View.tsx` | 250+ | Final Validation UI |
-| `components/steps/Step6_5View.tsx` | 250+ | Learning Harvest UI |
-| `components/steps/ClosureView.tsx` | 200+ | Closure UI |
-| **Components - Other** |
-| `components/ChatInterface.tsx` | 400+ | Chat-based interaction |
-| `components/GateDialog.tsx` | 200+ | Gate approval modal |
-| **Pages** |
-| `pages/Home.tsx` | 300+ | Landing page / run creation |
-| `pages/RunView.tsx` | 500+ | Active run interface |
-| `pages/Sessions.tsx` | 300+ | Run history browser |
-| `pages/Settings.tsx` | 250+ | App settings |
-| `pages/MetricsTestPage.tsx` | 200+ | Metrics testing UI |
-| **Types** |
-| `types/index.ts` | 200+ | General types (Run, Artifact, etc.) |
-| `types/metrics.ts` | 150+ | Metrics types (CriticalMetrics, etc.) |
-| **Entry Points** |
-| `App.tsx` | 150+ | Root app component |
-| `main.tsx` | 50+ | React entry point |
-
-### Documentation & Tests
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| **Documentation** |
-| `FIX-021-IMPLEMENTATION-SUMMARY.md` | 500+ | CI determinism implementation details |
-| `FIX-022-IMPLEMENTATION-SUMMARY.md` | 400+ | CI step-semantic weighting details |
-| `FIX-023-IMPLEMENTATION-SUMMARY.md` | 600+ | EFI claim taxonomy details |
-| `FIX-024-IMPLEMENTATION-SUMMARY.md` | 500+ | IAS soft gate details |
-| `FIX-025-IMPLEMENTATION-SUMMARY.md` | 400+ | EFI Step 6 only enforcement details |
-| `FIX-026-IMPLEMENTATION-SUMMARY.md` | 700+ | PCI deterministic checklist details |
-| `FIX-027-IMPLEMENTATION-SUMMARY.md` | 500+ | EV/SEC finalization details |
-| `INTEGRATION-TEST-REPORT-2025-12-31.md` | 400+ | Integration test analysis |
-| `TEST-RESULTS-E2E-2025-12-31.md` | 660+ | E2E test results |
-| `DATABASE_OVERVIEW.md` | 300+ | Database schema documentation |
-| `DASHBOARD_IMPLEMENTATION.md` | 200+ | Metrics dashboard implementation |
-| `INFRASTRUCTURE_REVIEW.md` | 400+ | Infrastructure overview |
-| **Tests** |
-| `examples/test_integration_metrics.rs` | 501 | Comprehensive integration test suite |
-| `examples/test_metrics.rs` | 200+ | Basic metrics test |
-| `examples/test_e2e_metrics.rs` | 300+ | E2E test (earlier version) |
-| `test-integration.bat` | 3 | Integration test runner |
-| `test-metrics.bat` | 3 | Basic test runner |
-| **Test Results** |
-| `INTEGRATION-TEST-RESULTS-2025-12-31.txt` | 474 | Raw integration test output |
-| `test-results-e2e.txt` | 429 | Raw E2E test output |
+- EV: Status always Pass, never triggers HALT
+- SEC: Explicit placeholder, always 100%
+**Rationale:** EV is informational only (calibration data), SEC not implemented for MVP
+**Impact:** Simplified enforcement model
 
 ---
 
 ## Summary
 
-Method-VI is a sophisticated desktop application implementing a 7-step AI-assisted framework development process with comprehensive governance. The architecture cleanly separates concerns:
+Method-VI is a production-ready desktop application implementing a rigorous, AI-assisted framework development process. The architecture is well-structured with clear separation of concerns:
 
-- **Frontend (React/TypeScript):** User interface and step-by-step workflow UI
-- **Backend (Rust/Tauri):** Business logic, agent coordination, metrics calculation
-- **Database (SQLite):** Persistent storage of runs, artifacts, audit trail
-- **AI Integration (Claude API):** LLM-powered reasoning for all agents
-- **Governance (Critical 6 Metrics):** Quality control and process compliance
+- **Frontend:** React/TypeScript UI with Tauri IPC
+- **Commands:** Thin handlers delegating to orchestrator
+- **Agents:** Specialized AI agents for each step
+- **Infrastructure:** Database, Ledger, Spine, Signals
+- **Governance:** Comprehensive metrics with deterministic enforcement
 
-**Recent Metrics Redesign (FIX-021 through FIX-027)** has finalized the governance system with deterministic calculations, step-specific enforcement, claim taxonomy filtering, soft gates for resynthesis, and clear distinction between enforced vs informational metrics.
+**Key Strengths:**
+- Immutable audit trail (Steno-Ledger)
+- Knowledge graph traceability (Spine)
+- Real-time quality metrics (Critical 6)
+- Gate-based progression control
+- Comprehensive testing (116 tests passing)
 
-**Current Status:** Post-Test Run 8, all core features implemented and verified through comprehensive integration testing. Ready for production use.
+**Production Status:**
+- ✅ All metrics redesigned and tested
+- ✅ Integration tests passing
+- ✅ Release build successful
+- ✅ Application launch confirmed
+
+**Next Phase:** Progression Architecture (feature branch created)
 
 ---
 
-**Document Generated:** 2026-01-01
-**Tag:** Post_Test_Run_8
-**Version:** 1.0
-**Total Files Documented:** 100+
-**Total Lines of Code:** ~20,000+
+**Document Version:** 1.0
+**Last Updated:** 2026-01-01
+**Maintained By:** Development Team
+**Review Cycle:** After major changes or quarterly

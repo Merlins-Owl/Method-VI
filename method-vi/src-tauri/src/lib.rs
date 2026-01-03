@@ -6,13 +6,16 @@ pub mod signals;
 pub mod config;
 pub mod api;
 pub mod agents;
+pub mod governance;
 pub mod commands;
 pub mod artifacts;
 
 use std::sync::Mutex;
 use tauri::Manager;
 use commands::OrchestratorState;
+use commands::callout_commands::CalloutState;
 use config::AppConfig;
+use governance::CalloutManager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -50,6 +53,9 @@ pub fn run() {
             app.manage(OrchestratorState(Mutex::new(None)));
             app.manage(Mutex::new(config));
 
+            // Initialize callout manager
+            app.manage(CalloutState(Mutex::new(CalloutManager::new())));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -69,6 +75,14 @@ pub fn run() {
             commands::reject_gate,
             commands::handle_halt_decision,
             commands::submit_clarifications,
+            commands::get_all_callouts,
+            commands::get_pending_callouts,
+            commands::get_callout_summary,
+            commands::can_proceed,
+            commands::acknowledge_callout,
+            commands::acknowledge_all_callouts,
+            commands::get_current_mode,
+            commands::detect_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
