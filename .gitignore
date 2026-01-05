@@ -1,4 +1,6 @@
+# API keys and secrets
 .claude/settings.local.json
 method-vi/dev-with-api-key.bat
-.claude/settings.local.json
-method-vi/dev-with-api-key.bat
+method-vi/dev-with-api-key.ps1
+method-vi/src-tauri/test-integration.bat
+method-vi/src-tauri/test-metrics.bat
