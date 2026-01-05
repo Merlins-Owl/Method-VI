@@ -168,7 +168,7 @@ export function calculateMetricStatus(
   threshold: MetricThreshold,
   inverseScale: boolean = false
 ): MetricStatus {
-  const { pass, warning, halt } = threshold;
+  const { pass, warning } = threshold;
 
   if (inverseScale) {
     // For metrics like EV where lower is better

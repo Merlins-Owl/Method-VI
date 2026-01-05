@@ -70,7 +70,7 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
     // For metrics where lower is better (EV), invert the scale
     if (metadata.inverseScale) {
       // EV: 0 = best (100%), 30+ = worst (0%)
-      const max = metadata.threshold.halt || 30;
+      const max = 30; // EV halt threshold from DEFAULT_THRESHOLDS
       return Math.max(0, Math.min(100, ((max - value) / max) * 100));
     }
 
@@ -313,7 +313,7 @@ export default function MetricsDashboard({ metrics, onClose }: MetricsDashboardP
                         borderRadius: '0.5rem',
                         color: '#e5e7eb',
                       }}
-                      formatter={(value: number) => [
+                      formatter={(value: number | undefined) => [
                         `${typeof value === 'number' ? value.toFixed(1) : 0}%`,
                         'Value',
                       ]}
