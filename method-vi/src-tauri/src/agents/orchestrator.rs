@@ -4,7 +4,7 @@ use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::agents::analysis_synthesis::AnalysisSynthesisAgent;
-use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent, IASWarning, MetricStatus};
+use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent, IASWarning};
 use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
 use crate::agents::structure_redesign::StructureRedesignAgent;
 use crate::agents::validation_learning::ValidationLearningAgent;
@@ -1583,72 +1583,6 @@ impl Orchestrator {
         Ok(summary)
     }
 
-    /// Filter metrics to only those that triggered HALT at the current step
-    ///
-    /// This function ensures triggered_metrics only contains metrics that actually
-    /// caused the HALT, based on step-specific evaluation rules (FIX-009) and the
-    /// halt_reason string from check_halt_conditions().
-    ///
-    /// # Arguments
-    /// * `metrics` - All calculated metrics
-    /// * `halt_reason` - The reason string from check_halt_conditions()
-    /// * `step` - Current step number (for step-aware filtering)
-    ///
-    /// # Returns
-    /// JSON object containing only the metrics that triggered HALT
-    fn get_halt_triggering_metrics(
-        metrics: &CriticalMetrics,
-        halt_reason: &str,
-        step: u8,
-    ) -> serde_json::Value {
-        let mut triggered = serde_json::Map::new();
-
-        // CI triggers HALT at all steps (1-6)
-        if let Some(ref ci) = metrics.ci {
-            if ci.status == MetricStatus::Fail && halt_reason.contains("CI") {
-                triggered.insert("ci".to_string(), serde_json::to_value(ci).unwrap());
-            }
-        }
-
-        // IAS triggers HALT at all steps (1-6)
-        if let Some(ref ias) = metrics.ias {
-            if ias.status == MetricStatus::Fail && halt_reason.contains("IAS") {
-                triggered.insert("ias".to_string(), serde_json::to_value(ias).unwrap());
-            }
-        }
-
-        // EFI only triggers at Step 6 (per FIX-009)
-        if step == 6 {
-            if let Some(ref efi) = metrics.efi {
-                if efi.status == MetricStatus::Fail && halt_reason.contains("EFI") {
-                    triggered.insert("efi".to_string(), serde_json::to_value(efi).unwrap());
-                }
-            }
-        }
-
-        // PCI only triggers at Steps 5-6 (per FIX-009)
-        if step >= 5 {
-            if let Some(ref pci) = metrics.pci {
-                if pci.status == MetricStatus::Fail && halt_reason.contains("PCI") {
-                    triggered.insert("pci".to_string(), serde_json::to_value(pci).unwrap());
-                }
-            }
-        }
-
-        // SEC only triggers at Steps 1 and 6 (per FIX-009)
-        if step == 1 || step == 6 {
-            if let Some(ref sec) = metrics.sec {
-                if sec.status == MetricStatus::Fail && halt_reason.contains("SEC") {
-                    triggered.insert("sec".to_string(), serde_json::to_value(sec).unwrap());
-                }
-            }
-        }
-
-        // EV never triggers (disabled per FIX-017)
-        // Don't include even if it shows Fail status
-
-        serde_json::Value::Object(triggered)
-    }
 
     /// Calculate metrics for the current step
     ///
@@ -1675,64 +1609,6 @@ impl Orchestrator {
 
             let current_step = self.state.step_number();
             let mut halt_triggered = false;
-
-            // Session 4.3: HALT logic deprecated - check_halt_conditions() now always returns None
-            // Metric violations are handled by the callout system (Sessions 4.1-4.2)
-            // This code path is kept for backward compatibility but will never execute
-            // TODO: Remove in Phase 5 after frontend migration complete
-            if let Some(halt_reason) = agent.check_halt_conditions(&metrics, current_step) {
-                warn!("⚠️ HALT CONDITION DETECTED: {}", halt_reason);
-                halt_triggered = true;
-
-                // Set state to Paused (not Halted - user can override)
-                // FIX-022: Filter triggered_metrics to only include metrics that caused HALT
-                self.state = RunState::Paused {
-                    reason: halt_reason.clone(),
-                    step: current_step,
-                    triggered_metrics: Some(Self::get_halt_triggering_metrics(
-                        &metrics,
-                        &halt_reason,
-                        current_step,
-                    )),
-                    all_metrics_snapshot: Some(serde_json::to_value(&metrics)?),
-                };
-
-                info!("Run PAUSED - awaiting human decision on HALT");
-
-                // Emit HALT signal
-                self.signal_router.emit_signal(
-                    SignalType::Halt,
-                    &self.run_id,
-                    SignalPayload {
-                        step_from: current_step as i32,
-                        step_to: current_step as i32,
-                        artifacts_produced: vec![],
-                        metrics_snapshot: Some(serde_json::to_value(&metrics)?),
-                        gate_required: false, // HALT doesn't require gate approval - it blocks immediately
-                    },
-                );
-
-                // Record HALT in ledger
-                let payload = LedgerPayload {
-                    action: "halt_triggered".to_string(),
-                    inputs: Some(serde_json::json!({
-                        "step": current_step,
-                        "reason": halt_reason,
-                    })),
-                    outputs: Some(serde_json::json!({
-                        "metrics": metrics,
-                    })),
-                    rationale: Some(format!("HALT condition detected: {}", halt_reason)),
-                };
-
-                self.ledger.create_entry(
-                    &self.run_id,
-                    EntryType::Decision,
-                    Some(current_step as i32),
-                    Some("Governance"),
-                    payload,
-                );
-            }
 
             // FIX-024: Check for IAS Warning (separate from HALT)
             // Only check if not already halted
@@ -1802,28 +1678,6 @@ impl Orchestrator {
                             );
                         }
                     }
-                }
-            }
-
-            // Session 4.3: PAUSE logic deprecated - check_pause_conditions() now always returns None
-            // Warning-level metrics are handled by the callout system (Warning callouts)
-            // This code path is kept for backward compatibility but will never execute
-            if !halt_triggered {
-                if let Some(pause_reason) = agent.check_pause_conditions(&metrics) {
-                    warn!("⚠️ WARNING condition detected: {}", pause_reason);
-
-                    // Emit warning signal (not a hard stop)
-                    self.signal_router.emit_signal(
-                        SignalType::MetricsWarning,
-                        &self.run_id,
-                        SignalPayload {
-                            step_from: current_step as i32,
-                            step_to: current_step as i32,
-                            artifacts_produced: vec![],
-                            metrics_snapshot: Some(serde_json::to_value(&metrics)?),
-                            gate_required: false,
-                        },
-                    );
                 }
             }
 

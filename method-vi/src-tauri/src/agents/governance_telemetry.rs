@@ -1409,29 +1409,6 @@ CONTENT:
         }
     }
 
-    /// **DEPRECATED (Session 4.3):** Check if any metrics require HALT
-    ///
-    /// This function has been replaced by the Callout System (Phase 4).
-    /// Critical callouts (via `generate_callouts()`) now handle metric violations.
-    ///
-    /// **Why deprecated:**
-    /// - Old HALT system blocks execution unconditionally
-    /// - New callout system provides graduated severity (Info/Attention/Warning/Critical)
-    /// - Callouts allow informed consent - users acknowledge but can proceed
-    /// - Callouts are mode-adjusted and use delta-based CI measurement
-    ///
-    /// **Migration:** Use `generate_callouts()` instead. Critical callouts require
-    /// user acknowledgment via CalloutManager but don't block execution.
-    ///
-    /// This function now always returns None. Kept for backward compatibility.
-    /// Will be fully removed in Phase 5.
-    #[deprecated(since = "0.1.0", note = "Use generate_callouts() - see Callout System (Phase 4)")]
-    pub fn check_halt_conditions(&self, metrics: &CriticalMetrics, step: u8) -> Option<String> {
-        // Session 4.3: HALT logic disabled - callout system handles metric violations
-        debug!("check_halt_conditions() called but disabled (step {})", step);
-        debug!("Metric violations now handled by callout system (see generate_callouts)");
-        None  // Always return None - callouts handle metric violations
-    }
 
     /// Generate callouts from current metric evaluation
     /// This replaces the old HALT logic with the Progression Engine model
@@ -1668,21 +1645,6 @@ CONTENT:
         }
     }
 
-    /// **DEPRECATED (Session 4.3):** Check if any metrics require PAUSE (warning status)
-    ///
-    /// This function has been replaced by the Callout System (Phase 4).
-    /// Warning-level callouts now handle metrics that need attention.
-    ///
-    /// **Migration:** Use `generate_callouts()` instead. Warning callouts are
-    /// displayed to users but don't require acknowledgment (only Critical blocks).
-    ///
-    /// This function now always returns None. Kept for backward compatibility.
-    #[deprecated(since = "0.1.0", note = "Use generate_callouts() - see Callout System (Phase 4)")]
-    pub fn check_pause_conditions(&self, metrics: &CriticalMetrics) -> Option<String> {
-        // Session 4.3: PAUSE logic disabled - callout system handles warnings
-        debug!("check_pause_conditions() called but disabled - using callout system");
-        None  // Always return None - callouts handle warnings
-    }
 
     /// Extract JSON from Claude's response, handling cases where JSON is embedded in text
     ///

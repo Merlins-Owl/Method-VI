@@ -296,24 +296,23 @@ Further analysis needed to determine specific implementation details and timelin
     println!("  IAS Score: {:.2}", ias1.value);
     println!("  Status: {:?}", ias1.status);
 
-    // Check HALT conditions (returns Option<String>)
-    let halt1 = agent_ias1.check_halt_conditions(&metrics_ias1, 4);
+    // Note: HALT logic replaced by callout system (Phase 4)
+    // Callouts provide graduated severity instead of binary HALT
     let is_soft_gate = ias1.value >= 0.30 && ias1.value < 0.70;
 
-    // For IAS in soft gate range, should not HALT (may warn via check_ias_warning)
+    // For IAS in soft gate range, should warn via check_ias_warning (not HALT)
     let ias_warning = agent_ias1.check_ias_warning(&metrics_ias1, 4);
 
-    println!("  HALT: {:?}", halt1);
     println!("  IAS Warning: {:?}", ias_warning.is_some());
 
-    let test6_pass = is_soft_gate && halt1.is_none();
+    let test6_pass = is_soft_gate;
     println!("\n  Result: {}", if test6_pass { "✅ PASS" } else { "❌ FAIL" });
     println!("  Details: IAS {:.2} in soft gate range → No HALT (warning only)\n", ias1.value);
 
     results.push((
         "Test 6: IAS Soft Gate",
         test6_pass,
-        format!("IAS: {:.2}, HALT: {}", ias1.value, halt1.is_some()),
+        format!("IAS: {:.2}, Status: {:?}", ias1.value, ias1.status),
     ));
 
     // =========================================================================
@@ -348,17 +347,15 @@ There are many ways to build software systems. Each has trade-offs.
     println!("  IAS Score: {:.2}", ias2.value);
     println!("  Status: {:?}", ias2.status);
 
-    let halt2 = agent_ias2.check_halt_conditions(&metrics_ias2, 3);
-    println!("  HALT: {:?}", halt2);
-
-    let test7_pass = ias2.value < 0.30 && halt2.is_some();
+    // Note: HALT replaced by callout system - checking metric violation directly
+    let test7_pass = ias2.value < 0.30 && ias2.status == MetricStatus::Fail;
     println!("\n  Result: {}", if test7_pass { "✅ PASS" } else { "❌ FAIL" });
-    println!("  Details: IAS {:.2} < 0.30 → HALT triggered\n", ias2.value);
+    println!("  Details: IAS {:.2} < 0.30 → Metric Fail status (callout system handles)\n", ias2.value);
 
     results.push((
         "Test 7: IAS Hard HALT",
         test7_pass,
-        format!("IAS: {:.2}, HALT: {}", ias2.value, halt2.is_some()),
+        format!("IAS: {:.2}, Status: {:?}", ias2.value, ias2.status),
     ));
 
     // =========================================================================
@@ -383,19 +380,17 @@ continuous delivery automation orchestration containerization virtualization.
     let metrics_trig = agent_trig.calculate_metrics(incoherent_content, charter, 3).await?;
     let ci_trig = metrics_trig.ci.as_ref().unwrap();
 
-    let halt_trig = agent_trig.check_halt_conditions(&metrics_trig, 3);
-
+    // Note: HALT replaced by callout system - checking metric violation directly
     println!("  CI Score: {:.2} (Status: {:?})", ci_trig.value, ci_trig.status);
-    println!("  HALT: {:?}", halt_trig);
 
-    let test8_pass = ci_trig.status == MetricStatus::Fail && halt_trig.is_some();
+    let test8_pass = ci_trig.status == MetricStatus::Fail;
     println!("\n  Result: {}", if test8_pass { "✅ PASS" } else { "❌ FAIL" });
-    println!("  Details: CI failure triggers HALT\n");
+    println!("  Details: CI failure detected (callout system handles)\n");
 
     results.push((
         "Test 8: CI HALT",
         test8_pass,
-        format!("CI: {:.2}, HALT: {}", ci_trig.value, halt_trig.is_some()),
+        format!("CI: {:.2}, Status: {:?}", ci_trig.value, ci_trig.status),
     ));
 
     // =========================================================================
@@ -418,13 +413,11 @@ Brief note: Use microservices.
     let metrics_ev = agent_ev.calculate_metrics(high_entropy_content, charter, 3).await?;
     let ev = metrics_ev.ev.as_ref().unwrap();
 
-    let halt_ev = agent_ev.check_halt_conditions(&metrics_ev, 3);
-
+    // Note: HALT replaced by callout system
     println!("  EV Variance: {:.1}%", ev.value);
     println!("  EV Status: {:?}", ev.status);
-    println!("  HALT: {:?}", halt_ev);
 
-    // EV should always be Pass status and never cause HALT
+    // EV should always be Pass status (informational only, never fails)
     let test9_pass = ev.status == MetricStatus::Pass;
     println!("\n  Result: {}", if test9_pass { "✅ PASS" } else { "❌ FAIL" });
     println!("  Details: EV is informational, variance {:.1}% shows Pass status\n", ev.value);

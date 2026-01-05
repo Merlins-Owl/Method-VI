@@ -356,16 +356,10 @@ All proposed work remains within defined scope boundaries.
     println!("   ⚠ Warning: {}", warning_count);
     println!("   ✕ Fail: {}", fail_count);
 
-    // Check HALT/PAUSE conditions
-    println!("\n4. Checking HALT/PAUSE conditions...");
-    let test_step = 6; // Use Step 6 to test all metrics including EFI
-    if let Some(halt_reason) = agent.check_halt_conditions(&metrics, test_step) {
-        println!("   🛑 HALT TRIGGERED: {}", halt_reason);
-    } else if let Some(pause_reason) = agent.check_pause_conditions(&metrics) {
-        println!("   ⏸️  PAUSE RECOMMENDED: {}", pause_reason);
-    } else {
-        println!("   ✓ All metrics within acceptable thresholds");
-    }
+    // Note: HALT/PAUSE conditions replaced by callout system in Phase 4
+    // Callouts provide graduated severity (Info/Attention/Warning/Critical)
+    println!("\n4. Metric governance now handled by callout system");
+    println!("   ✓ All metrics calculated successfully (callouts managed separately)");
 
     println!("\n{}", "=".repeat(80));
     println!("✅ TEST COMPLETE - All metrics calculated successfully!");
