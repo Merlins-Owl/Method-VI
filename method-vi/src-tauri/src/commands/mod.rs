@@ -7,6 +7,8 @@ pub mod step5;
 pub mod step6;
 pub mod step6_5;
 pub mod closure;
+pub mod callout_commands;
+pub mod mode_commands;
 
 pub use step0::*;
 pub use step1::*;
@@ -17,3 +19,5 @@ pub use step5::*;
 pub use step6::*;
 pub use step6_5::*;
 pub use closure::*;
+pub use callout_commands::*;
+pub use mode_commands::*;

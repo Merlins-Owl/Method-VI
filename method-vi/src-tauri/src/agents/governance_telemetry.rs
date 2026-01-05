@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::api::anthropic::AnthropicClient;
+use crate::governance::{
+    Callout, CalloutManager, CalloutTier, CalloutTrigger,
+    MetricEnforcement, Step, StructureMode, ThresholdResolver,
+};
 
 /// Metric input - a value that contributed to the metric calculation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1405,111 +1409,279 @@ CONTENT:
         }
     }
 
-    /// Check if any metrics require HALT
+    /// **DEPRECATED (Session 4.3):** Check if any metrics require HALT
     ///
-    /// # Arguments
-    /// * `metrics` - The metrics to check
-    /// * `step` - Current step (0-6) - Metrics are only evaluated at specific steps per spec §9.1
+    /// This function has been replaced by the Callout System (Phase 4).
+    /// Critical callouts (via `generate_callouts()`) now handle metric violations.
     ///
-    /// # Step-Specific Evaluation (per spec §9.1):
-    /// - CI:  Steps 1, 2, 3, 4, 5, 6 (all steps)
-    /// - EV:  NEVER (FIX-027: informational only)
-    /// - IAS: Steps 1, 2, 3, 4, 5, 6 (all steps, soft gate <0.30)
-    /// - EFI: Step 6 ONLY (FIX-025)
-    /// - SEC: NEVER (FIX-027: placeholder, always 100%)
-    /// - PCI: Step 6 ONLY (FIX-026)
+    /// **Why deprecated:**
+    /// - Old HALT system blocks execution unconditionally
+    /// - New callout system provides graduated severity (Info/Attention/Warning/Critical)
+    /// - Callouts allow informed consent - users acknowledge but can proceed
+    /// - Callouts are mode-adjusted and use delta-based CI measurement
+    ///
+    /// **Migration:** Use `generate_callouts()` instead. Critical callouts require
+    /// user acknowledgment via CalloutManager but don't block execution.
+    ///
+    /// This function now always returns None. Kept for backward compatibility.
+    /// Will be fully removed in Phase 5.
+    #[deprecated(since = "0.1.0", note = "Use generate_callouts() - see Callout System (Phase 4)")]
     pub fn check_halt_conditions(&self, metrics: &CriticalMetrics, step: u8) -> Option<String> {
-        let mut halt_reasons = Vec::new();
+        // Session 4.3: HALT logic disabled - callout system handles metric violations
+        debug!("check_halt_conditions() called but disabled (step {})", step);
+        debug!("Metric violations now handled by callout system (see generate_callouts)");
+        None  // Always return None - callouts handle metric violations
+    }
 
-        // CI - evaluated at all steps (1-6)
+    /// Generate callouts from current metric evaluation
+    /// This replaces the old HALT logic with the Progression Engine model
+    pub fn generate_callouts(
+        &self,
+        metrics: &CriticalMetrics,
+        previous_metrics: Option<&CriticalMetrics>,
+        step: Step,
+        mode: StructureMode,
+        enforcement: MetricEnforcement,  // Session 3.2: New parameter for enforcement mode
+        callout_manager: &mut CalloutManager,
+    ) {
+        // Session 3.2: If informational mode, just log metrics and return (no callouts)
+        // This is used for Step 3 (Diagnostic) where low coherence is expected
+        if enforcement == MetricEnforcement::Informational {
+            info!(
+                "Step {:?} metrics (informational): CI={:.2}, IAS={:.2}",
+                step,
+                metrics.ci.as_ref().map(|m| m.value).unwrap_or(0.0),
+                metrics.ias.as_ref().map(|m| m.value).unwrap_or(0.0)
+            );
+            return;
+        }
+
+        let thresholds = ThresholdResolver::resolve(mode, step);
+
+        // CI Callout
         if let Some(ref ci) = metrics.ci {
-            if ci.status == MetricStatus::Fail {
-                halt_reasons.push(format!("CI critically low: {:.2}", ci.value));
+            let ci_tier = CalloutTrigger::determine_tier(
+                "CI",
+                ci.value,
+                previous_metrics.and_then(|m| m.ci.as_ref().map(|c| c.value)),
+                step,
+                mode,
+            );
+            if ci_tier != CalloutTier::Info {
+                callout_manager.add(Callout::new(
+                    ci_tier,
+                    "CI",
+                    ci.value,
+                    previous_metrics.and_then(|m| m.ci.as_ref().map(|c| c.value)),
+                    format!("{} mode: pass={:.2}, warn={:.2}",
+                        mode.display_name(), thresholds.ci_pass, thresholds.ci_warn),
+                    self.explain_ci_callout(ci_tier, ci.value),
+                    self.recommend_ci_action(ci_tier),
+                    step,
+                    mode,
+                ));
             }
         }
 
-        // EV - NEVER (FIX-027: informational only, never enforced)
-        // EV is purely informational for calibration data collection.
-        // Entropy variance is expected across steps and no meaningful thresholds exist yet.
-        // This metric may remain informational permanently.
-
-        // IAS - evaluated at all steps (1-6)
+        // IAS Callout
         if let Some(ref ias) = metrics.ias {
-            if ias.status == MetricStatus::Fail {
-                halt_reasons.push(format!("IAS critically low: {:.2}", ias.value));
+            let ias_tier = CalloutTrigger::determine_tier(
+                "IAS",
+                ias.value,
+                previous_metrics.and_then(|m| m.ias.as_ref().map(|i| i.value)),
+                step,
+                mode,
+            );
+            if ias_tier != CalloutTier::Info {
+                callout_manager.add(Callout::new(
+                    ias_tier,
+                    "IAS",
+                    ias.value,
+                    previous_metrics.and_then(|m| m.ias.as_ref().map(|i| i.value)),
+                    format!("{} mode: pass={:.2}, warn={:.2}",
+                        mode.display_name(), thresholds.ias_pass, thresholds.ias_warn),
+                    self.explain_ias_callout(ias_tier, ias.value),
+                    self.recommend_ias_action(ias_tier),
+                    step,
+                    mode,
+                ));
             }
         }
 
-        // EFI - evaluated at Step 6 ONLY (FIX-025)
-        // FIX-008/FIX-009: Early steps (0-5) may have low EFI (e.g., Charter is governance, not evidence)
-        // but this shouldn't block progression before validation
-        // FIX-025: Uses claim taxonomy - only scored claims require evidence
-        if step == 6 {
-            if let Some(ref efi) = metrics.efi {
-                if efi.status == MetricStatus::Fail {
-                    halt_reasons.push(format!("EFI insufficient evidence: {:.0}% of scored claims substantiated", efi.value * 100.0));
-                }
+        // EFI Callout (step-aware, enforced at Step 6 only)
+        if let Some(ref efi) = metrics.efi {
+            let efi_tier = CalloutTrigger::determine_tier(
+                "EFI",
+                efi.value,
+                previous_metrics.and_then(|m| m.efi.as_ref().map(|e| e.value)),
+                step,
+                mode,
+            );
+            if efi_tier != CalloutTier::Info {
+                callout_manager.add(Callout::new(
+                    efi_tier,
+                    "EFI",
+                    efi.value,
+                    previous_metrics.and_then(|m| m.efi.as_ref().map(|e| e.value)),
+                    format!("Step {}: Evidence validation", step.as_u8()),
+                    self.explain_efi_callout(efi_tier, efi.value),
+                    self.recommend_efi_action(efi_tier),
+                    step,
+                    mode,
+                ));
             }
         }
 
-        // SEC - NEVER (FIX-027: placeholder, always 100%)
-
-        // PCI - evaluated at Step 6 ONLY (FIX-026)
-        // Process compliance is informational until validation
-        if step == 6 {
-            if let Some(ref pci) = metrics.pci {
-                if pci.status == MetricStatus::Fail {
-                    halt_reasons.push(format!("PCI process violations: {:.0}% compliance", pci.value * 100.0));
-                }
+        // PCI Callout (step-aware, enforced at Step 6 only)
+        if let Some(ref pci) = metrics.pci {
+            let pci_tier = CalloutTrigger::determine_tier(
+                "PCI",
+                pci.value,
+                previous_metrics.and_then(|m| m.pci.as_ref().map(|p| p.value)),
+                step,
+                mode,
+            );
+            if pci_tier != CalloutTier::Info {
+                callout_manager.add(Callout::new(
+                    pci_tier,
+                    "PCI",
+                    pci.value,
+                    previous_metrics.and_then(|m| m.pci.as_ref().map(|p| p.value)),
+                    format!("Step {}: Process compliance", step.as_u8()),
+                    self.explain_pci_callout(pci_tier, pci.value),
+                    self.recommend_pci_action(pci_tier),
+                    step,
+                    mode,
+                ));
             }
         }
 
-        if !halt_reasons.is_empty() {
-            Some(format!("HALT: Critical metrics failed: {}", halt_reasons.join(", ")))
-        } else {
-            None
+        // EV is always Info, so we skip it
+        // SEC is placeholder (always 100%), so we skip it
+    }
+
+    fn explain_ci_callout(&self, tier: CalloutTier, value: f64) -> String {
+        match tier {
+            CalloutTier::Critical => format!(
+                "Coherence Index ({:.2}) is critically low. Content may have significant structural issues.",
+                value
+            ),
+            CalloutTier::Warning => format!(
+                "Coherence Index ({:.2}) shows notable regression from previous step.",
+                value
+            ),
+            CalloutTier::Attention => format!(
+                "Coherence Index ({:.2}) has dropped slightly. Minor structural concerns.",
+                value
+            ),
+            CalloutTier::Info => String::new(),
         }
     }
 
-    /// Check if any metrics require PAUSE (warning status)
+    fn recommend_ci_action(&self, tier: CalloutTier) -> String {
+        match tier {
+            CalloutTier::Critical => "Review content structure. Consider strengthening logical connections.".to_string(),
+            CalloutTier::Warning => "Review recent changes for unintended structural impacts.".to_string(),
+            CalloutTier::Attention => "Monitor in subsequent steps.".to_string(),
+            CalloutTier::Info => String::new(),
+        }
+    }
+
+    fn explain_ias_callout(&self, tier: CalloutTier, value: f64) -> String {
+        match tier {
+            CalloutTier::Critical => format!(
+                "Intent Alignment Score ({:.2}) is critically low. Content may have drifted from original intent.",
+                value
+            ),
+            CalloutTier::Warning => format!(
+                "Intent Alignment Score ({:.2}) indicates potential drift from original intent.",
+                value
+            ),
+            CalloutTier::Attention => format!(
+                "Intent Alignment Score ({:.2}) shows minor deviation from original intent.",
+                value
+            ),
+            CalloutTier::Info => String::new(),
+        }
+    }
+
+    fn recommend_ias_action(&self, tier: CalloutTier) -> String {
+        match tier {
+            CalloutTier::Critical => "Revisit original intent. Consider whether scope has expanded appropriately.".to_string(),
+            CalloutTier::Warning => "Review recent additions against original goals.".to_string(),
+            CalloutTier::Attention => "Ensure new content aligns with stated objectives.".to_string(),
+            CalloutTier::Info => String::new(),
+        }
+    }
+
+    fn explain_efi_callout(&self, tier: CalloutTier, value: f64) -> String {
+        match tier {
+            CalloutTier::Critical => format!(
+                "Evidence Fidelity Index ({:.0}%) is critically low. Most claims lack substantiation.",
+                value * 100.0
+            ),
+            CalloutTier::Warning => format!(
+                "Evidence Fidelity Index ({:.0}%) shows insufficient evidence for some claims.",
+                value * 100.0
+            ),
+            CalloutTier::Attention => format!(
+                "Evidence Fidelity Index ({:.0}%) could be strengthened.",
+                value * 100.0
+            ),
+            CalloutTier::Info => String::new(),
+        }
+    }
+
+    fn recommend_efi_action(&self, tier: CalloutTier) -> String {
+        match tier {
+            CalloutTier::Critical => "Add evidence for unsupported claims or reclassify as aspirational.".to_string(),
+            CalloutTier::Warning => "Strengthen evidence for key assertions.".to_string(),
+            CalloutTier::Attention => "Consider adding supporting evidence where appropriate.".to_string(),
+            CalloutTier::Info => String::new(),
+        }
+    }
+
+    fn explain_pci_callout(&self, tier: CalloutTier, value: f64) -> String {
+        match tier {
+            CalloutTier::Critical => format!(
+                "Process Compliance Index ({:.0}%) shows significant process violations.",
+                value * 100.0
+            ),
+            CalloutTier::Warning => format!(
+                "Process Compliance Index ({:.0}%) indicates some process gaps.",
+                value * 100.0
+            ),
+            CalloutTier::Attention => format!(
+                "Process Compliance Index ({:.0}%) has minor compliance issues.",
+                value * 100.0
+            ),
+            CalloutTier::Info => String::new(),
+        }
+    }
+
+    fn recommend_pci_action(&self, tier: CalloutTier) -> String {
+        match tier {
+            CalloutTier::Critical => "Review and address major process compliance issues before proceeding.".to_string(),
+            CalloutTier::Warning => "Address identified process gaps.".to_string(),
+            CalloutTier::Attention => "Monitor process compliance in subsequent steps.".to_string(),
+            CalloutTier::Info => String::new(),
+        }
+    }
+
+    /// **DEPRECATED (Session 4.3):** Check if any metrics require PAUSE (warning status)
+    ///
+    /// This function has been replaced by the Callout System (Phase 4).
+    /// Warning-level callouts now handle metrics that need attention.
+    ///
+    /// **Migration:** Use `generate_callouts()` instead. Warning callouts are
+    /// displayed to users but don't require acknowledgment (only Critical blocks).
+    ///
+    /// This function now always returns None. Kept for backward compatibility.
+    #[deprecated(since = "0.1.0", note = "Use generate_callouts() - see Callout System (Phase 4)")]
     pub fn check_pause_conditions(&self, metrics: &CriticalMetrics) -> Option<String> {
-        let mut warning_reasons = Vec::new();
-
-        if let Some(ref ci) = metrics.ci {
-            if ci.status == MetricStatus::Warning {
-                warning_reasons.push(format!("CI below target: {:.2}", ci.value));
-            }
-        }
-
-        if let Some(ref ev) = metrics.ev {
-            if ev.status == MetricStatus::Warning {
-                warning_reasons.push(format!("EV approaching limit: {:.1}%", ev.value));
-            }
-        }
-
-        if let Some(ref ias) = metrics.ias {
-            if ias.status == MetricStatus::Warning {
-                warning_reasons.push(format!("IAS below target: {:.2}", ias.value));
-            }
-        }
-
-        if let Some(ref efi) = metrics.efi {
-            if efi.status == MetricStatus::Warning {
-                warning_reasons.push(format!("EFI below target: {:.1}%", efi.value));
-            }
-        }
-
-        if let Some(ref pci) = metrics.pci {
-            if pci.status == MetricStatus::Warning {
-                warning_reasons.push(format!("PCI below target: {:.2}", pci.value));
-            }
-        }
-
-        if !warning_reasons.is_empty() {
-            Some(format!("PAUSE: Metrics need attention: {}", warning_reasons.join(", ")))
-        } else {
-            None
-        }
+        // Session 4.3: PAUSE logic disabled - callout system handles warnings
+        debug!("check_pause_conditions() called but disabled - using callout system");
+        None  // Always return None - callouts handle warnings
     }
 
     /// Extract JSON from Claude's response, handling cases where JSON is embedded in text
@@ -2132,12 +2304,13 @@ mod tests {
         };
 
         // Test CI (higher is better)
+        // FIX-023: CI pass threshold is 0.70, warning is 0.50
         assert_eq!(
             agent.evaluate_status(0.85, &agent.thresholds.ci, false),
             MetricStatus::Pass
         );
         assert_eq!(
-            agent.evaluate_status(0.75, &agent.thresholds.ci, false),
+            agent.evaluate_status(0.60, &agent.thresholds.ci, false),
             MetricStatus::Warning
         );
         assert_eq!(
@@ -2160,14 +2333,21 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_e_baseline_locking() {
-        let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_else(|_| "test-key".to_string());
+    #[tokio::test]
+    async fn test_e_baseline_locking() {
+        // Skip test if no valid API key is available
+        let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+            Ok(key) if key.starts_with("sk-ant-") => key,
+            _ => {
+                println!("Skipping test_e_baseline_locking: ANTHROPIC_API_KEY not set or invalid");
+                return;
+            }
+        };
         let mut agent = GovernanceTelemetryAgent::new(api_key).unwrap();
 
         // Calculate baseline
         let baseline_content = "This is a test baseline with some words in it.";
-        let result = agent.calculate_e_baseline(baseline_content, 1);
+        let result = agent.calculate_e_baseline(baseline_content, 1).await;
         assert!(result.is_ok());
 
         let e_baseline = agent.get_e_baseline();
@@ -2182,7 +2362,7 @@ mod tests {
         assert!(agent.e_baseline.as_ref().unwrap().locked);
 
         // Try to recalculate - should fail
-        let recalc_result = agent.calculate_e_baseline("New content", 2);
+        let recalc_result = agent.calculate_e_baseline("New content", 2).await;
         assert!(recalc_result.is_err());
     }
 }

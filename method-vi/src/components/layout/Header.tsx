@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { StatusBar } from '../StatusBar';
 
 interface HeaderProps {
   runId?: string;
@@ -29,6 +30,8 @@ export default function Header({ runId, currentStep }: HeaderProps) {
             </div>
           )}
         </div>
+
+        {runId && <StatusBar />}
 
         <div className="flex items-center space-x-4">
           <Link

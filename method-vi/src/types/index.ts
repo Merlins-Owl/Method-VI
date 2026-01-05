@@ -68,6 +68,7 @@ export interface Metrics {
 
 // Export new metrics types
 export * from './metrics';
+export * from './callouts';
 
 export interface Step {
   number: number;

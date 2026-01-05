@@ -9,6 +9,7 @@ use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
 use crate::agents::structure_redesign::StructureRedesignAgent;
 use crate::agents::validation_learning::ValidationLearningAgent;
 use crate::context::{ContextManager, Mode, Role, RunContext, Signal as ContextSignal};
+use crate::governance::{CalloutManager, ModeDetector};
 use crate::ledger::{EntryType, LedgerManager, LedgerPayload, LedgerState};
 use crate::signals::{SignalPayload, SignalRouter, SignalType};
 
@@ -211,6 +212,25 @@ pub struct Orchestrator {
     /// When IAS is in warning range (0.30-0.69), this field holds the warning
     /// until the user acknowledges it. At Step 4, this triggers ResynthesisPause state.
     pending_ias_acknowledgment: Option<IASWarning>,
+
+    /// Detected structure mode (Architecting/Builder/Refining)
+    /// Set at Step 2 after initial CI baseline is calculated, locked for the run
+    pub detected_mode: Option<crate::governance::StructureMode>,
+
+    /// Full mode detection result with metadata (Session 2.1)
+    /// Includes confidence, signals, timestamp for transparency
+    pub mode_detection_result: Option<crate::governance::ModeDetectionResult>,
+
+    /// True after mode is locked (Step 2 completion)
+    pub mode_locked: bool,
+
+    /// CI baseline recorded at Step 3 (Diagnostic)
+    /// Used for delta calculation at Step 4+ (Constraint 2: Delta Baseline Rule)
+    pub diagnostic_ci_baseline: Option<f64>,
+
+    /// Callout manager for progression engine (Phase 4)
+    /// Tracks callouts requiring user acknowledgment before proceeding
+    pub callout_manager: CalloutManager,
 }
 
 impl Orchestrator {
@@ -300,6 +320,11 @@ impl Orchestrator {
             validation_agent: None,       // Will be set via with_validation_agent()
             latest_metrics: None,
             pending_ias_acknowledgment: None, // FIX-024: IAS soft gate acknowledgment
+            detected_mode: None,               // Session 2.2: Set at Step 2 after CI baseline
+            mode_detection_result: None,       // Session 2.2: Full detection metadata
+            mode_locked: false,                // Session 2.2: Locked at Step 2 completion
+            diagnostic_ci_baseline: None,      // Session 3.1: Set at Step 3 for delta calculation
+            callout_manager: CalloutManager::new(),  // Session 4.1: Progression engine callout tracking
         }
     }
 
@@ -1197,7 +1222,9 @@ impl Orchestrator {
 
         let initial_metrics = metrics_opt.ok_or_else(|| anyhow::anyhow!("Failed to calculate metrics in Step 2"))?;
 
-        // CRITICAL: If HALT was triggered, do NOT emit progression signal
+        // Session 4.3: HALT check deprecated - halt_triggered will always be false
+        // Metric violations now handled by callout system (Session 4.1)
+        // This code path kept for backward compatibility but will never execute
         if halt_triggered {
             warn!("Step 2 HALTED - run is PAUSED, no gate signal emitted");
             warn!("State: {:?}", self.state);
@@ -1214,6 +1241,56 @@ impl Orchestrator {
                 crate::agents::governance_telemetry::MetricStatus::Warning => "WARNING",
                 crate::agents::governance_telemetry::MetricStatus::Fail => "FAIL",
             });
+
+            // Session 2.3: Mode Detection Integration
+            // Detect structure mode from CI baseline (Constraint 1: Transparency Mandate)
+            let mode_result = ModeDetector::detect(ci.value);
+            info!("Mode detection complete: {:?}", mode_result.mode);
+
+            // Store mode in orchestrator (locked for the run)
+            self.detected_mode = Some(mode_result.mode);
+            self.mode_detection_result = Some(mode_result.clone());
+            self.mode_locked = true;
+
+            // The ModeDetector::log_detection() function has already logged:
+            // "Detected Structure: {Low|Medium|High}. Engaging {mode} Mode. (CI: {ci}, Confidence: {pct}%)"
+            // This satisfies Constraint 1: Transparency Mandate
+
+            // Note: Frontend can query mode via get_current_mode() Tauri command
+            // Event emission will be added in Phase 3 (frontend integration) when we add
+            // ModeDetected signal type to SignalType enum and emit via signal_router
+
+            // Session 4.1: Generate callouts for Step 2 metrics
+            if let Some(ref governance_agent) = self.governance_agent {
+                governance_agent.generate_callouts(
+                    &initial_metrics,
+                    None, // No previous metrics at Step 2 (first measurement)
+                    crate::governance::Step::Step2_Governance,
+                    mode_result.mode,
+                    crate::governance::MetricEnforcement::Enforced,
+                    &mut self.callout_manager,
+                );
+
+                // Log callout summary
+                let summary = self.callout_manager.summary();
+                info!(
+                    "Step 2 callouts: {} total ({} critical, {} warning, {} attention)",
+                    summary.total,
+                    summary.by_tier.critical,
+                    summary.by_tier.warning,
+                    summary.by_tier.attention
+                );
+
+                // Check if we can proceed (only Critical blocks)
+                if !self.callout_manager.can_proceed() {
+                    info!(
+                        "Step 2: {} Critical callouts require acknowledgment before proceeding",
+                        summary.pending_acknowledgments
+                    );
+                    // Note: Don't block here - emit event for frontend to show callouts
+                    // User will acknowledge via acknowledge_callout() Tauri command
+                }
+            }
         }
         if let Some(ev) = &initial_metrics.ev {
             info!("  EV: {:.1}% ({})", ev.value, match ev.status {
@@ -1599,7 +1676,10 @@ impl Orchestrator {
             let current_step = self.state.step_number();
             let mut halt_triggered = false;
 
-            // Check for HALT conditions (EFI only enforced at Step 6)
+            // Session 4.3: HALT logic deprecated - check_halt_conditions() now always returns None
+            // Metric violations are handled by the callout system (Sessions 4.1-4.2)
+            // This code path is kept for backward compatibility but will never execute
+            // TODO: Remove in Phase 5 after frontend migration complete
             if let Some(halt_reason) = agent.check_halt_conditions(&metrics, current_step) {
                 warn!("⚠️ HALT CONDITION DETECTED: {}", halt_reason);
                 halt_triggered = true;
@@ -1725,7 +1805,9 @@ impl Orchestrator {
                 }
             }
 
-            // Check for PAUSE (warning) conditions - only if not already halted
+            // Session 4.3: PAUSE logic deprecated - check_pause_conditions() now always returns None
+            // Warning-level metrics are handled by the callout system (Warning callouts)
+            // This code path is kept for backward compatibility but will never execute
             if !halt_triggered {
                 if let Some(pause_reason) = agent.check_pause_conditions(&metrics) {
                     warn!("⚠️ WARNING condition detected: {}", pause_reason);
@@ -1910,7 +1992,23 @@ impl Orchestrator {
         info!("Step 3: Calculating metrics...");
         let (metrics, halt_triggered) = self.calculate_metrics(&analysis_target, &governance_context).await?;
 
-        // CRITICAL: If HALT was triggered, do NOT emit progression signal
+        // Session 3.2: Record diagnostic baseline (Constraint 2: Delta Baseline Rule)
+        // Step 3 metrics are INFORMATIONAL ONLY - no callouts generated for diagnostic content
+        // CI is recorded as baseline for Step 4+ delta calculation
+        if let Some(ref metrics) = metrics {
+            if let Some(ref ci_metric) = metrics.ci {
+                info!(
+                    "Step 3 CI: {:.2} (informational - baseline for Step 4+ delta)",
+                    ci_metric.value
+                );
+                self.diagnostic_ci_baseline = Some(ci_metric.value);
+                info!("✓ Diagnostic baseline recorded: {:.2}", ci_metric.value);
+            }
+        }
+
+        // Session 4.3: HALT check deprecated - halt_triggered will always be false
+        // Step 3 uses MetricEnforcement::Informational (Session 3.2), no HALTs generated
+        // This code path kept for backward compatibility but will never execute
         if halt_triggered {
             warn!("Step 3 HALTED - run is PAUSED, no gate signal emitted");
             warn!("State: {:?}", self.state);
@@ -2175,7 +2273,9 @@ impl Orchestrator {
         // Use the north star narrative as the output for metrics
         let (metrics, halt_triggered) = self.calculate_metrics(&synthesis_result.north_star_narrative, &charter_content).await?;
 
-        // CRITICAL: If HALT was triggered, do NOT emit progression signal
+        // Session 4.3: HALT check deprecated - halt_triggered will always be false
+        // Metric violations handled by callout system (Session 4.2, lines below)
+        // This code path kept for backward compatibility but will never execute
         if halt_triggered {
             warn!("Step 4 HALTED - run is PAUSED, no gate signal emitted");
             warn!("State: {:?}", self.state);
@@ -2183,6 +2283,78 @@ impl Orchestrator {
 
             // Return early - do not proceed to gate
             return Ok((core_thesis_id, north_star_narrative_id));
+        }
+
+        // Session 4.2: Generate callouts for Step 4 metrics using diagnostic baseline
+        if let (Some(mode), Some(ref current_metrics)) = (self.detected_mode, &metrics) {
+            if let Some(ref governance_agent) = self.governance_agent {
+                // Build previous_metrics from diagnostic baseline (Constraint 2: Delta from Step 3)
+                let previous_metrics = self.diagnostic_ci_baseline.map(|baseline_ci| {
+                    use crate::agents::governance_telemetry::{CriticalMetrics, MetricResult, MetricThreshold, MetricStatus, MetricInput, MetricInputValue};
+
+                    CriticalMetrics {
+                        ci: Some(MetricResult {
+                            metric_name: "CI".to_string(),
+                            value: baseline_ci,
+                            threshold: MetricThreshold {
+                                pass: 0.65,
+                                warning: Some(0.50),
+                                halt: Some(0.35),
+                            },
+                            status: MetricStatus::Pass,
+                            inputs_used: vec![MetricInput {
+                                name: "diagnostic_baseline".to_string(),
+                                source: "Step 3".to_string(),
+                                value: MetricInputValue::Number(baseline_ci),
+                            }],
+                            calculation_method: "Step 3 diagnostic baseline".to_string(),
+                            interpretation: "Baseline CI for delta calculation".to_string(),
+                            recommendation: None,
+                        }),
+                        ev: None,
+                        ias: None,
+                        efi: None,
+                        sec: None,
+                        pci: None,
+                    }
+                });
+
+                governance_agent.generate_callouts(
+                    current_metrics,
+                    previous_metrics.as_ref(),
+                    crate::governance::Step::Step4_Synthesis,
+                    mode,
+                    crate::governance::MetricEnforcement::Enforced,
+                    &mut self.callout_manager,
+                );
+
+                // Log delta from diagnostic baseline
+                if let Some(baseline_ci) = self.diagnostic_ci_baseline {
+                    if let Some(ref ci_metric) = current_metrics.ci {
+                        let delta = ci_metric.value - baseline_ci;
+                        info!(
+                            "Step 4 CI: {:.2} (delta: {:+.2} from Step 3 baseline {:.2})",
+                            ci_metric.value, delta, baseline_ci
+                        );
+                    }
+                }
+
+                let summary = self.callout_manager.summary();
+                info!(
+                    "Step 4 callouts: {} total ({} critical, {} warning, {} attention)",
+                    summary.total,
+                    summary.by_tier.critical,
+                    summary.by_tier.warning,
+                    summary.by_tier.attention
+                );
+
+                if !self.callout_manager.can_proceed() {
+                    info!(
+                        "Step 4: {} Critical callouts require acknowledgment before proceeding",
+                        summary.pending_acknowledgments
+                    );
+                }
+            }
         }
 
         // FIX-006: Re-synthesis pause check (Warning status on IAS)
@@ -2412,7 +2584,9 @@ impl Orchestrator {
         // Use the framework architecture as the output for metrics
         let (metrics, halt_triggered) = self.calculate_metrics(&framework_architecture, &charter_content).await?;
 
-        // CRITICAL: If HALT was triggered, do NOT emit progression signal
+        // Session 4.3: HALT check deprecated - halt_triggered will always be false
+        // Metric violations handled by callout system (Session 4.2, lines below)
+        // This code path kept for backward compatibility but will never execute
         if halt_triggered {
             warn!("Step 5 HALTED - run is PAUSED, no gate signal emitted");
             warn!("State: {:?}", self.state);
@@ -2420,6 +2594,78 @@ impl Orchestrator {
 
             // Return early - do not proceed to gate
             return Ok(framework_architecture_id);
+        }
+
+        // Session 4.2: Generate callouts for Step 5 metrics using diagnostic baseline
+        if let (Some(mode), Some(ref current_metrics)) = (self.detected_mode, &metrics) {
+            if let Some(ref governance_agent) = self.governance_agent {
+                // Build previous_metrics from diagnostic baseline (Constraint 2: Delta from Step 3)
+                let previous_metrics = self.diagnostic_ci_baseline.map(|baseline_ci| {
+                    use crate::agents::governance_telemetry::{CriticalMetrics, MetricResult, MetricThreshold, MetricStatus, MetricInput, MetricInputValue};
+
+                    CriticalMetrics {
+                        ci: Some(MetricResult {
+                            metric_name: "CI".to_string(),
+                            value: baseline_ci,
+                            threshold: MetricThreshold {
+                                pass: 0.65,
+                                warning: Some(0.50),
+                                halt: Some(0.35),
+                            },
+                            status: MetricStatus::Pass,
+                            inputs_used: vec![MetricInput {
+                                name: "diagnostic_baseline".to_string(),
+                                source: "Step 3".to_string(),
+                                value: MetricInputValue::Number(baseline_ci),
+                            }],
+                            calculation_method: "Step 3 diagnostic baseline".to_string(),
+                            interpretation: "Baseline CI for delta calculation".to_string(),
+                            recommendation: None,
+                        }),
+                        ev: None,
+                        ias: None,
+                        efi: None,
+                        sec: None,
+                        pci: None,
+                    }
+                });
+
+                governance_agent.generate_callouts(
+                    current_metrics,
+                    previous_metrics.as_ref(),
+                    crate::governance::Step::Step5_Redesign,
+                    mode,
+                    crate::governance::MetricEnforcement::Enforced,
+                    &mut self.callout_manager,
+                );
+
+                // Log delta from diagnostic baseline
+                if let Some(baseline_ci) = self.diagnostic_ci_baseline {
+                    if let Some(ref ci_metric) = current_metrics.ci {
+                        let delta = ci_metric.value - baseline_ci;
+                        info!(
+                            "Step 5 CI: {:.2} (delta: {:+.2} from Step 3 baseline {:.2})",
+                            ci_metric.value, delta, baseline_ci
+                        );
+                    }
+                }
+
+                let summary = self.callout_manager.summary();
+                info!(
+                    "Step 5 callouts: {} total ({} critical, {} warning, {} attention)",
+                    summary.total,
+                    summary.by_tier.critical,
+                    summary.by_tier.warning,
+                    summary.by_tier.attention
+                );
+
+                if !self.callout_manager.can_proceed() {
+                    info!(
+                        "Step 5: {} Critical callouts require acknowledgment before proceeding",
+                        summary.pending_acknowledgments
+                    );
+                }
+            }
         }
 
         // Record Step 5 completion in ledger (only if not halted)
@@ -2579,6 +2825,78 @@ impl Orchestrator {
 
         info!("EFI corrected: {:.2} (validation audit) → {:.2} (governance strict)",
             original_efi, validation_result.critical_6_scores.efi);
+
+        // Session 4.2: Generate callouts for Step 6 metrics using diagnostic baseline
+        if let Some(mode) = self.detected_mode {
+            if let Some(ref governance_agent) = self.governance_agent {
+                // Build previous_metrics from diagnostic baseline (Constraint 2: Delta from Step 3)
+                let previous_metrics = self.diagnostic_ci_baseline.map(|baseline_ci| {
+                    use crate::agents::governance_telemetry::{CriticalMetrics, MetricResult, MetricThreshold, MetricStatus, MetricInput, MetricInputValue};
+
+                    CriticalMetrics {
+                        ci: Some(MetricResult {
+                            metric_name: "CI".to_string(),
+                            value: baseline_ci,
+                            threshold: MetricThreshold {
+                                pass: 0.65,
+                                warning: Some(0.50),
+                                halt: Some(0.35),
+                            },
+                            status: MetricStatus::Pass,
+                            inputs_used: vec![MetricInput {
+                                name: "diagnostic_baseline".to_string(),
+                                source: "Step 3".to_string(),
+                                value: MetricInputValue::Number(baseline_ci),
+                            }],
+                            calculation_method: "Step 3 diagnostic baseline".to_string(),
+                            interpretation: "Baseline CI for delta calculation".to_string(),
+                            recommendation: None,
+                        }),
+                        ev: None,
+                        ias: None,
+                        efi: None,
+                        sec: None,
+                        pci: None,
+                    }
+                });
+
+                governance_agent.generate_callouts(
+                    &governance_metrics,
+                    previous_metrics.as_ref(),
+                    crate::governance::Step::Step6_Validation,
+                    mode,
+                    crate::governance::MetricEnforcement::Enforced,
+                    &mut self.callout_manager,
+                );
+
+                // Log delta from diagnostic baseline
+                if let Some(baseline_ci) = self.diagnostic_ci_baseline {
+                    if let Some(ref ci_metric) = governance_metrics.ci {
+                        let delta = ci_metric.value - baseline_ci;
+                        info!(
+                            "Step 6 CI: {:.2} (delta: {:+.2} from Step 3 baseline {:.2})",
+                            ci_metric.value, delta, baseline_ci
+                        );
+                    }
+                }
+
+                let summary = self.callout_manager.summary();
+                info!(
+                    "Step 6 callouts: {} total ({} critical, {} warning, {} attention)",
+                    summary.total,
+                    summary.by_tier.critical,
+                    summary.by_tier.warning,
+                    summary.by_tier.attention
+                );
+
+                if !self.callout_manager.can_proceed() {
+                    info!(
+                        "Step 6: {} Critical callouts require acknowledgment before proceeding",
+                        summary.pending_acknowledgments
+                    );
+                }
+            }
+        }
 
         // Store validation artifacts
         self.validation_matrix = Some(validation_result.validation_matrix.clone());
