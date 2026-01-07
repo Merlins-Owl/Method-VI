@@ -13,9 +13,7 @@ pub mod artifacts;
 use std::sync::Mutex;
 use tauri::Manager;
 use commands::OrchestratorState;
-use commands::callout_commands::CalloutState;
 use config::AppConfig;
-use governance::CalloutManager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -52,9 +50,6 @@ pub fn run() {
             // Initialize orchestrator state
             app.manage(OrchestratorState(Mutex::new(None)));
             app.manage(Mutex::new(config));
-
-            // Initialize callout manager
-            app.manage(CalloutState(Mutex::new(CalloutManager::new())));
 
             Ok(())
         })

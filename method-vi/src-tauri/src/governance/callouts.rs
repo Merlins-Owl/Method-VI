@@ -145,12 +145,34 @@ pub struct CalloutCountByTier {
     pub critical: usize,
 }
 
+impl Default for CalloutCountByTier {
+    fn default() -> Self {
+        Self {
+            info: 0,
+            attention: 0,
+            warning: 0,
+            critical: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalloutSummary {
     pub total: usize,
     pub by_tier: CalloutCountByTier,
     pub pending_acknowledgments: usize,
     pub can_proceed: bool,
+}
+
+impl Default for CalloutSummary {
+    fn default() -> Self {
+        Self {
+            total: 0,
+            by_tier: CalloutCountByTier::default(),
+            pending_acknowledgments: 0,
+            can_proceed: true, // No callouts = can proceed
+        }
+    }
 }
 
 /// Manages callouts for a run
