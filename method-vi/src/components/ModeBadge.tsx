@@ -87,7 +87,7 @@ export const ModeBadge: React.FC<ModeBadgeProps> = ({ showDetails = false, class
         <>
           {/* Backdrop - fixed to cover whole screen */}
           <div
-            className="fixed inset-0 z-40"
+            className="fixed inset-0 z-40 bg-black/50"
             onClick={() => setShowPopover(false)}
           />
 

@@ -11,10 +11,10 @@ export const calloutApi = {
   canProceed: () => invoke<boolean>('can_proceed'),
 
   acknowledgeCallout: (calloutId: string, userConfirmation: string) =>
-    invoke('acknowledge_callout', { calloutId, userConfirmation }),
+    invoke('acknowledge_callout', { calloutId, confirmation: userConfirmation }),
 
   acknowledgeAllCallouts: (userConfirmation: string) =>
-    invoke('acknowledge_all_callouts', { userConfirmation }),
+    invoke('acknowledge_all_callouts', { confirmation: userConfirmation }),
 
   getCurrentMode: () => invoke<ModeInfo>('get_current_mode'),
 };
