@@ -78,6 +78,8 @@ pub fn run() {
             commands::acknowledge_all_callouts,
             commands::get_current_mode,
             commands::detect_mode,
+            commands::set_user_posture,
+            commands::get_user_posture,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

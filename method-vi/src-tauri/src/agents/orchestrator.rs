@@ -224,6 +224,10 @@ pub struct Orchestrator {
     /// True after mode is locked (Step 2 completion)
     pub mode_locked: bool,
 
+    /// User's posture selection (Build/Audit) from Step 0
+    /// Combined with CI baseline to determine Transformation mode eligibility
+    pub user_posture: crate::governance::UserPosture,
+
     /// CI baseline recorded at Step 3 (Diagnostic)
     /// Used for delta calculation at Step 4+ (Constraint 2: Delta Baseline Rule)
     pub diagnostic_ci_baseline: Option<f64>,
@@ -272,6 +276,34 @@ impl Orchestrator {
     pub fn with_validation_agent(mut self, agent: ValidationLearningAgent) -> Self {
         self.validation_agent = Some(agent);
         self
+    }
+
+    /// Set user's posture selection (Build/Audit) from Step 0
+    ///
+    /// This is combined with CI baseline to determine Transformation mode eligibility.
+    /// Should be called during Step 0 before mode detection occurs.
+    pub fn set_user_posture(&mut self, posture: crate::governance::UserPosture) {
+        info!("User posture set to: {:?}", posture);
+        self.user_posture = posture;
+
+        // Record to ledger for transparency
+        let payload = LedgerPayload {
+            action: "user_posture_set".to_string(),
+            inputs: Some(serde_json::json!({
+                "posture": format!("{:?}", posture),
+            })),
+            outputs: None,
+            rationale: Some("User confirmed processing posture during Step 0".to_string()),
+        };
+
+        let _entry = self.ledger.create_entry(
+            &self.run_id,
+            EntryType::Decision,
+            Some(0),
+            Some("User"),
+            payload,
+        );
+        debug!("Posture selection recorded to ledger");
     }
 
     /// Create a new Orchestrator for a run
@@ -323,6 +355,7 @@ impl Orchestrator {
             detected_mode: None,               // Session 2.2: Set at Step 2 after CI baseline
             mode_detection_result: None,       // Session 2.2: Full detection metadata
             mode_locked: false,                // Session 2.2: Locked at Step 2 completion
+            user_posture: crate::governance::UserPosture::default(),  // Phase 6: User posture from Step 0
             diagnostic_ci_baseline: None,      // Session 3.1: Set at Step 3 for delta calculation
             callout_manager: CalloutManager::new(),  // Session 4.1: Progression engine callout tracking
         }

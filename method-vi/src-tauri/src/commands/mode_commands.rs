@@ -1,6 +1,6 @@
 use tauri::State;
 use serde::{Deserialize, Serialize};
-use crate::governance::{ModeDetectionResult, ModeDetector};
+use crate::governance::{ModeDetectionResult, ModeDetector, UserPosture};
 use crate::commands::step0::OrchestratorState;
 
 /// Response for get_current_mode command
@@ -47,4 +47,41 @@ pub fn get_current_mode(state: State<OrchestratorState>) -> Result<ModeInfo, Str
 #[tauri::command]
 pub fn detect_mode(ci_baseline: f64) -> ModeDetectionResult {
     ModeDetector::detect(ci_baseline)
+}
+
+/// Set user's posture selection (Build/Audit) for the current run
+///
+/// Should be called during Step 0 to inform mode detection.
+/// Combined with CI baseline to determine Transformation mode eligibility.
+#[tauri::command]
+pub fn set_user_posture(
+    posture: String,
+    state: State<OrchestratorState>,
+) -> Result<String, String> {
+    let posture_enum = match posture.as_str() {
+        "Build" => UserPosture::Build,
+        "Audit" => UserPosture::Audit,
+        _ => return Err(format!("Invalid posture: {}. Expected 'Build' or 'Audit'", posture)),
+    };
+
+    let mut orchestrator_lock = state.0.lock().map_err(|e| e.to_string())?;
+
+    if let Some(orchestrator) = orchestrator_lock.as_mut() {
+        orchestrator.set_user_posture(posture_enum);
+        Ok(format!("Posture set to {:?}", posture_enum))
+    } else {
+        Err("No active run. Start a run before setting posture.".to_string())
+    }
+}
+
+/// Get current user posture for the run
+#[tauri::command]
+pub fn get_user_posture(state: State<OrchestratorState>) -> Result<String, String> {
+    let orchestrator_lock = state.0.lock().map_err(|e| e.to_string())?;
+
+    if let Some(orchestrator) = orchestrator_lock.as_ref() {
+        Ok(format!("{:?}", orchestrator.user_posture))
+    } else {
+        Ok("Unconfirmed".to_string())
+    }
 }

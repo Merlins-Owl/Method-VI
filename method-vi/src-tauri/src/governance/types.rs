@@ -42,6 +42,19 @@ impl Step {
     }
 }
 
+/// User's posture selection from Step 0
+/// Combined with CI baseline to determine mode (especially Transformation eligibility)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum UserPosture {
+    /// User hasn't confirmed posture yet
+    #[default]
+    Unconfirmed,
+    /// User selected Build/Partner mode - creation focus
+    Build,
+    /// User selected Audit/Review mode - evaluation focus
+    Audit,
+}
+
 /// Auto-detected structure level of input content
 /// Mode is determined by CI baseline at Step 1 and remains fixed for the run
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
