@@ -86,17 +86,21 @@ pub struct ExpectedArtifact {
 }
 
 /// Structured Charter data with artifact tracking
-/// Preserves raw markdown while adding structured metadata
+/// Stores structured fields instead of raw markdown for better programmatic access
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharterData {
-    /// Original LLM-generated markdown (preserved for display/export)
-    pub raw_markdown: String,
-    /// SHA-256 hash of the markdown content
+    /// SHA-256 hash of the charter content (for integrity verification)
     pub hash: String,
+    /// Primary goal from IntentSummary
+    pub primary_goal: String,
+    /// Objectives extracted from Charter/IntentSummary
+    pub objectives: Vec<String>,
     /// Artifacts expected to be produced (parsed from Success Criteria)
     pub expected_artifacts: Vec<ExpectedArtifact>,
     /// Success criteria clarity from IntentSummary ("Defined" | "Implied" | "Missing")
     pub success_criteria_state: String,
+    /// When the Charter was created
+    pub created_at: DateTime<Utc>,
 }
 
 impl CharterData {
@@ -114,6 +118,18 @@ impl CharterData {
     pub fn has_all_required(&self) -> bool {
         !self.expected_artifacts.is_empty() &&
             self.expected_artifacts.iter().any(|a| a.required)
+    }
+
+    /// Generate display markdown from structured data
+    pub fn to_display_markdown(&self) -> String {
+        format!(
+            "# Charter\n\n## Primary Goal\n{}\n\n## Objectives\n{}\n\n## Expected Deliverables\n{}\n\n## Success Criteria State\n{}\n\n---\n*Created: {}*",
+            self.primary_goal,
+            self.objectives.iter().map(|o| format!("- {}", o)).collect::<Vec<_>>().join("\n"),
+            self.expected_artifacts.iter().map(|a| format!("- {} ({})", a.display_name, if a.required { "required" } else { "optional" })).collect::<Vec<_>>().join("\n"),
+            self.success_criteria_state,
+            self.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+        )
     }
 }
 

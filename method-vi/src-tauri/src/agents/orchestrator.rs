@@ -1097,12 +1097,17 @@ impl Orchestrator {
         let expected_artifacts = Self::extract_expected_artifacts(&charter_content, &intent_summary_for_charter);
         info!("Parsed {} expected artifacts from Charter", expected_artifacts.len());
 
+        // Extract objectives from IntentSummary scope items
+        let objectives = Self::extract_objectives_from_intent(&intent_summary_for_charter);
+
         // Create structured CharterData
         let charter_data = crate::governance::CharterData {
-            raw_markdown: charter.clone(),
             hash: charter_hash.clone(),
+            primary_goal: intent_summary_for_charter.primary_goal.clone(),
+            objectives,
             expected_artifacts,
             success_criteria_state: intent_summary_for_charter.success_criteria_state.clone(),
+            created_at: Utc::now(),
         };
 
         // Store all 4 artifacts
@@ -1222,9 +1227,9 @@ impl Orchestrator {
             anyhow::bail!("Governance & Telemetry Agent not configured");
         }
 
-        // Extract Charter content and hash
-        let charter_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
-        let charter_hash = self.extract_hash_from_artifact(&charter_data.raw_markdown)?;
+        // Get Charter content and hash from structured data
+        let charter_content = charter_data.to_display_markdown();
+        let charter_hash = charter_data.hash.clone();
 
         // Extract Architecture Map content
         let architecture_map_content = self.extract_content_from_artifact(architecture_map)?;
@@ -1552,6 +1557,36 @@ impl Orchestrator {
         );
 
         artifacts
+    }
+
+    /// Extract objectives from IntentSummary for CharterData
+    ///
+    /// Builds objectives list from IntentSummary's primary_goal, expected_outcome,
+    /// and likely_in_scope items.
+    fn extract_objectives_from_intent(intent_summary: &IntentSummary) -> Vec<String> {
+        let mut objectives = Vec::new();
+
+        // Primary goal is the main objective
+        if !intent_summary.primary_goal.is_empty() {
+            objectives.push(format!("Primary: {}", intent_summary.primary_goal));
+        }
+
+        // Expected outcome as secondary objective
+        if !intent_summary.expected_outcome.is_empty() {
+            objectives.push(format!("Outcome: {}", intent_summary.expected_outcome));
+        }
+
+        // In-scope items as additional objectives
+        for item in &intent_summary.likely_in_scope {
+            objectives.push(item.clone());
+        }
+
+        // Ensure we always have at least one objective
+        if objectives.is_empty() {
+            objectives.push("Complete the requested task".to_string());
+        }
+
+        objectives
     }
 
     /// Extract objectives from Charter content for relevance checking
@@ -1942,8 +1977,8 @@ impl Orchestrator {
         // Clone to avoid borrow checker issues with self mutations later
         let analysis_target = intent_summary.user_request.clone();
 
-        // Extract Charter content as governance context (for Intent lens only)
-        let governance_context = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
+        // Get Charter content as governance context (for Intent lens only)
+        let governance_context = charter_data.to_display_markdown();
 
         // Validation: Ensure we're not analyzing the Charter itself
         if analysis_target.contains("# Charter") || analysis_target.contains("## Objectives")
@@ -2124,10 +2159,10 @@ impl Orchestrator {
         let integrated_diagnostic = self.integrated_diagnostic.as_ref().unwrap();
         let charter_data = self.charter.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No Charter available"))?;
-        let charter_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
+        let charter_content = charter_data.to_display_markdown();
 
-        // Extract objectives from Charter for relevance checking
-        let charter_objectives = self.extract_objectives_from_charter(&charter_content)?;
+        // Get objectives directly from CharterData
+        let charter_objectives = charter_data.objectives.clone();
 
         // Check that analysis findings relate to Charter objectives
         // This prevents synthesizing based on wrong analysis target (e.g., Charter itself)
@@ -2260,7 +2295,7 @@ impl Orchestrator {
         // Calculate metrics
         info!("Step 4: Calculating metrics...");
         let charter_data = self.charter.as_ref().unwrap();
-        let charter_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
+        let charter_content = charter_data.to_display_markdown();
 
         // Use the north star narrative as the output for metrics
         let (metrics, halt_triggered) = self.calculate_metrics(&synthesis_result.north_star_narrative, &charter_content).await?;
@@ -2571,7 +2606,7 @@ impl Orchestrator {
         // Calculate metrics
         info!("Step 5: Calculating metrics...");
         let charter_data = self.charter.as_ref().unwrap();
-        let charter_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
+        let charter_content = charter_data.to_display_markdown();
 
         // Use the framework architecture as the output for metrics
         let (metrics, halt_triggered) = self.calculate_metrics(&framework_architecture, &charter_content).await?;
@@ -2778,8 +2813,8 @@ impl Orchestrator {
 
         info!("Step 6: Running comprehensive validation...");
 
-        // Extract charter objectives (simplified extraction)
-        let charter_objectives_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
+        // Get charter content for validation
+        let charter_objectives_content = charter_data.to_display_markdown();
 
         // Generate Steno-Ledger for validation context
         let steno_ledger = self.generate_steno_ledger();
@@ -3225,10 +3260,11 @@ impl Orchestrator {
 
         // Archive Step 1: Charter & Baseline
         if let Some(ref charter_data) = self.charter {
+            let charter_markdown = charter_data.to_display_markdown();
             artifacts.push(ArchivedArtifact {
                 artifact_type: "Charter".to_string(),
-                content: charter_data.raw_markdown.clone(),
-                size_bytes: charter_data.raw_markdown.len(),
+                size_bytes: charter_markdown.len(),
+                content: charter_markdown,
             });
         }
 
