@@ -189,7 +189,7 @@ pub async fn execute_step_1(
     // Build response
     let response = Step1Response {
         intent_anchor: extract_artifact_info(intent_anchor, "Intent_Anchor"),
-        charter: extract_artifact_info(charter, "Charter"),
+        charter: extract_artifact_info(&charter.raw_markdown, "Charter"),
         baseline_report: extract_artifact_info(baseline_report, "Baseline_Report"),
         architecture_map: extract_artifact_info(architecture_map, "Architecture_Map"),
         e_baseline,

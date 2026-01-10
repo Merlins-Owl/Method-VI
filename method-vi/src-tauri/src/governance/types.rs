@@ -55,6 +55,68 @@ pub enum UserPosture {
     Audit,
 }
 
+// =============================================================================
+// ARTIFACT FIDELITY TYPES (Phase 6: Charter-Driven Validation)
+// =============================================================================
+
+/// Fidelity level of an artifact - how complete/ready it is
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ArtifactFidelity {
+    /// Placeholder/outline only - structure exists but no real content
+    #[default]
+    Draft,
+    /// Structure complete, content partial - work in progress
+    Placeholder,
+    /// Complete and ready for validation
+    Final,
+}
+
+/// An artifact expected to be produced during the run
+/// Defined in Charter, validated at Step 6
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpectedArtifact {
+    /// Unique key for this artifact (e.g., "workshop_guide", "api_spec")
+    pub artifact_key: String,
+    /// Human-readable name (e.g., "Workshop Facilitator Guide")
+    pub display_name: String,
+    /// Minimum fidelity required for validation pass
+    pub required_fidelity: ArtifactFidelity,
+    /// If true, absence blocks Step 6 validation
+    pub required: bool,
+}
+
+/// Structured Charter data with artifact tracking
+/// Preserves raw markdown while adding structured metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharterData {
+    /// Original LLM-generated markdown (preserved for display/export)
+    pub raw_markdown: String,
+    /// SHA-256 hash of the markdown content
+    pub hash: String,
+    /// Artifacts expected to be produced (parsed from Success Criteria)
+    pub expected_artifacts: Vec<ExpectedArtifact>,
+    /// Success criteria clarity from IntentSummary ("Defined" | "Implied" | "Missing")
+    pub success_criteria_state: String,
+}
+
+impl CharterData {
+    /// Get only the required artifacts (those that block validation if missing)
+    pub fn get_required_artifacts(&self) -> Vec<&ExpectedArtifact> {
+        self.expected_artifacts.iter().filter(|a| a.required).collect()
+    }
+
+    /// Get artifacts by fidelity level
+    pub fn get_artifacts_by_fidelity(&self, fidelity: ArtifactFidelity) -> Vec<&ExpectedArtifact> {
+        self.expected_artifacts.iter().filter(|a| a.required_fidelity == fidelity).collect()
+    }
+
+    /// Check if all required artifacts are defined
+    pub fn has_all_required(&self) -> bool {
+        !self.expected_artifacts.is_empty() &&
+            self.expected_artifacts.iter().any(|a| a.required)
+    }
+}
+
 /// Auto-detected structure level of input content
 /// Mode is determined by CI baseline at Step 1 and remains fixed for the run
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

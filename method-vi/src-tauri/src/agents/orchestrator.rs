@@ -158,7 +158,7 @@ pub struct Orchestrator {
 
     /// Step 1 artifacts (immutable baseline)
     pub intent_anchor: Option<String>,
-    pub charter: Option<String>,
+    pub charter: Option<crate::governance::CharterData>,
     pub baseline_report: Option<String>,
     pub architecture_map: Option<String>,
 
@@ -1011,6 +1011,9 @@ impl Orchestrator {
         let intent_summary = self.intent_summary.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No intent summary available - Step 0 must be completed first"))?;
 
+        // Clone data needed for CharterData to avoid borrow checker issues later
+        let intent_summary_for_charter = intent_summary.clone();
+
         // Validate all agents are configured before proceeding
         if self.scope_agent.is_none() {
             anyhow::bail!("Scope & Pattern Agent not configured");
@@ -1090,9 +1093,21 @@ impl Orchestrator {
         let architecture_id = format!("{}-architecture-map", self.run_id);
         info!("✓ Architecture_Map created: {}", architecture_id);
 
+        // Parse expected artifacts from Charter and IntentSummary
+        let expected_artifacts = Self::extract_expected_artifacts(&charter_content, &intent_summary_for_charter);
+        info!("Parsed {} expected artifacts from Charter", expected_artifacts.len());
+
+        // Create structured CharterData
+        let charter_data = crate::governance::CharterData {
+            raw_markdown: charter.clone(),
+            hash: charter_hash.clone(),
+            expected_artifacts,
+            success_criteria_state: intent_summary_for_charter.success_criteria_state.clone(),
+        };
+
         // Store all 4 artifacts
         self.intent_anchor = Some(intent_anchor);
-        self.charter = Some(charter);
+        self.charter = Some(charter_data);
         self.baseline_report = Some(baseline_report);
         self.architecture_map = Some(architecture_map);
 
@@ -1196,7 +1211,7 @@ impl Orchestrator {
         }
 
         // Ensure we have required artifacts from Step 1
-        let charter = self.charter.as_ref()
+        let charter_data = self.charter.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No Charter available - Step 1 must be completed first"))?;
 
         let architecture_map = self.architecture_map.as_ref()
@@ -1208,8 +1223,8 @@ impl Orchestrator {
         }
 
         // Extract Charter content and hash
-        let charter_content = self.extract_content_from_artifact(charter)?;
-        let charter_hash = self.extract_hash_from_artifact(charter)?;
+        let charter_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
+        let charter_hash = self.extract_hash_from_artifact(&charter_data.raw_markdown)?;
 
         // Extract Architecture Map content
         let architecture_map_content = self.extract_content_from_artifact(architecture_map)?;
@@ -1447,6 +1462,96 @@ impl Orchestrator {
         }
 
         Ok(content_lines.join("\n"))
+    }
+
+    /// Extract expected artifacts from Charter markdown and IntentSummary
+    ///
+    /// Parses the Charter's Deliverables and Success Criteria sections to identify
+    /// expected artifacts. Falls back to defaults based on intent_category if parsing fails.
+    fn extract_expected_artifacts(
+        charter_content: &str,
+        intent_summary: &IntentSummary,
+    ) -> Vec<crate::governance::ExpectedArtifact> {
+        use crate::governance::{ArtifactFidelity, ExpectedArtifact};
+
+        let mut artifacts = Vec::new();
+        let content_lower = charter_content.to_lowercase();
+
+        // Look for common deliverable keywords in Charter
+        let deliverable_patterns = [
+            ("guide", "Guide Document", true),
+            ("framework", "Framework Definition", true),
+            ("template", "Template", false),
+            ("checklist", "Checklist", false),
+            ("specification", "Specification Document", true),
+            ("architecture", "Architecture Document", true),
+            ("process", "Process Definition", true),
+            ("workflow", "Workflow Document", false),
+            ("report", "Report", false),
+            ("plan", "Plan Document", false),
+            ("model", "Model Definition", true),
+        ];
+
+        // Check if Charter mentions these deliverables
+        for (keyword, display_name, required) in deliverable_patterns.iter() {
+            if content_lower.contains(keyword) {
+                // Avoid duplicates
+                let artifact_key = keyword.to_string();
+                if !artifacts.iter().any(|a: &ExpectedArtifact| a.artifact_key == artifact_key) {
+                    artifacts.push(ExpectedArtifact {
+                        artifact_key,
+                        display_name: display_name.to_string(),
+                        required_fidelity: if *required {
+                            ArtifactFidelity::Final
+                        } else {
+                            ArtifactFidelity::Placeholder
+                        },
+                        required: *required,
+                    });
+                }
+            }
+        }
+
+        // If no artifacts found, provide defaults based on intent_category
+        if artifacts.is_empty() {
+            match intent_summary.intent_category.as_str() {
+                "Operational" => {
+                    // Operational intent typically produces concrete deliverables
+                    artifacts.push(ExpectedArtifact {
+                        artifact_key: "primary_deliverable".to_string(),
+                        display_name: "Primary Deliverable".to_string(),
+                        required_fidelity: ArtifactFidelity::Final,
+                        required: true,
+                    });
+                }
+                "Analytical" => {
+                    // Analytical intent produces analysis artifacts
+                    artifacts.push(ExpectedArtifact {
+                        artifact_key: "analysis_report".to_string(),
+                        display_name: "Analysis Report".to_string(),
+                        required_fidelity: ArtifactFidelity::Final,
+                        required: true,
+                    });
+                }
+                "Exploratory" | _ => {
+                    // Exploratory intent produces framework/model artifacts
+                    artifacts.push(ExpectedArtifact {
+                        artifact_key: "framework_definition".to_string(),
+                        display_name: "Framework Definition".to_string(),
+                        required_fidelity: ArtifactFidelity::Placeholder,
+                        required: false,
+                    });
+                }
+            }
+        }
+
+        debug!(
+            "Extracted {} expected artifacts for intent_category={}",
+            artifacts.len(),
+            intent_summary.intent_category
+        );
+
+        artifacts
     }
 
     /// Extract objectives from Charter content for relevance checking
@@ -1822,7 +1927,7 @@ impl Orchestrator {
         }
 
         // Ensure we have required artifacts from Steps 0 and 1
-        let charter = self.charter.as_ref()
+        let charter_data = self.charter.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No Charter available - Step 1 must be completed first"))?;
 
         let intent_summary = self.intent_summary.as_ref()
@@ -1838,7 +1943,7 @@ impl Orchestrator {
         let analysis_target = intent_summary.user_request.clone();
 
         // Extract Charter content as governance context (for Intent lens only)
-        let governance_context = self.extract_content_from_artifact(charter)?;
+        let governance_context = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
 
         // Validation: Ensure we're not analyzing the Charter itself
         if analysis_target.contains("# Charter") || analysis_target.contains("## Objectives")
@@ -2017,9 +2122,9 @@ impl Orchestrator {
         info!("Step 4: Pre-synthesis relevance check...");
 
         let integrated_diagnostic = self.integrated_diagnostic.as_ref().unwrap();
-        let charter = self.charter.as_ref()
+        let charter_data = self.charter.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No Charter available"))?;
-        let charter_content = self.extract_content_from_artifact(charter)?;
+        let charter_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
 
         // Extract objectives from Charter for relevance checking
         let charter_objectives = self.extract_objectives_from_charter(&charter_content)?;
@@ -2154,8 +2259,8 @@ impl Orchestrator {
 
         // Calculate metrics
         info!("Step 4: Calculating metrics...");
-        let charter = self.charter.as_ref().unwrap();
-        let charter_content = self.extract_content_from_artifact(charter)?;
+        let charter_data = self.charter.as_ref().unwrap();
+        let charter_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
 
         // Use the north star narrative as the output for metrics
         let (metrics, halt_triggered) = self.calculate_metrics(&synthesis_result.north_star_narrative, &charter_content).await?;
@@ -2465,8 +2570,8 @@ impl Orchestrator {
 
         // Calculate metrics
         info!("Step 5: Calculating metrics...");
-        let charter = self.charter.as_ref().unwrap();
-        let charter_content = self.extract_content_from_artifact(charter)?;
+        let charter_data = self.charter.as_ref().unwrap();
+        let charter_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
 
         // Use the framework architecture as the output for metrics
         let (metrics, halt_triggered) = self.calculate_metrics(&framework_architecture, &charter_content).await?;
@@ -2654,7 +2759,7 @@ impl Orchestrator {
             .ok_or_else(|| anyhow::anyhow!("No framework architecture available - Step 5 must be completed first"))?;
 
         // Ensure we have Charter and Core Thesis for validation
-        let charter_content = self.charter.as_ref()
+        let charter_data = self.charter.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No Charter available"))?;
 
         let core_thesis = self.core_thesis.as_ref()
@@ -2674,7 +2779,7 @@ impl Orchestrator {
         info!("Step 6: Running comprehensive validation...");
 
         // Extract charter objectives (simplified extraction)
-        let charter_objectives_content = self.extract_content_from_artifact(charter_content)?;
+        let charter_objectives_content = self.extract_content_from_artifact(&charter_data.raw_markdown)?;
 
         // Generate Steno-Ledger for validation context
         let steno_ledger = self.generate_steno_ledger();
@@ -3119,11 +3224,11 @@ impl Orchestrator {
         }
 
         // Archive Step 1: Charter & Baseline
-        if let Some(ref charter) = self.charter {
+        if let Some(ref charter_data) = self.charter {
             artifacts.push(ArchivedArtifact {
                 artifact_type: "Charter".to_string(),
-                content: charter.clone(),
-                size_bytes: charter.len(),
+                content: charter_data.raw_markdown.clone(),
+                size_bytes: charter_data.raw_markdown.len(),
             });
         }
 
