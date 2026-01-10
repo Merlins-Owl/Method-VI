@@ -44,9 +44,10 @@ pub fn get_current_mode(state: State<OrchestratorState>) -> Result<ModeInfo, Str
 }
 
 /// Manually trigger mode detection (for testing)
+/// Uses legacy detection without posture (backward compatibility)
 #[tauri::command]
 pub fn detect_mode(ci_baseline: f64) -> ModeDetectionResult {
-    ModeDetector::detect(ci_baseline)
+    ModeDetector::detect_legacy(ci_baseline)
 }
 
 /// Set user's posture selection (Build/Audit) for the current run

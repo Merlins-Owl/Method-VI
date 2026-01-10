@@ -324,6 +324,8 @@ pub enum MetricEnforcement {
 pub struct ModeDetectionResult {
     pub mode: StructureMode,
     pub ci_baseline: f64,
+    /// CI from raw user input (MODE-001 fix)
+    pub raw_input_ci: f64,
     pub confidence: f64,
     pub signals: Vec<String>,
     pub detected_at: DateTime<Utc>,
@@ -333,14 +335,49 @@ pub struct ModeDetector;
 
 impl ModeDetector {
     /// Detect mode with full metadata (Constraint 1: Transparency)
-    pub fn detect(ci_baseline: f64) -> ModeDetectionResult {
-        let mode = StructureMode::from_ci_baseline(ci_baseline);
-        let confidence = Self::calculate_confidence(ci_baseline, mode);
-        let signals = Self::generate_signals(ci_baseline, mode);
+    ///
+    /// MODE-001 FIX: Now considers raw user input CI and posture precedence
+    /// for Transformation mode selection.
+    ///
+    /// # Arguments
+    /// * `ci_baseline` - CI from Charter (for threshold selection)
+    /// * `raw_input_ci` - CI from raw user input (for mode selection)
+    /// * `user_posture` - User's selected posture (Build/Audit/Unconfirmed)
+    /// * `intent_category` - Intent category ("Operational", "Analytical", "Exploratory")
+    pub fn detect(
+        ci_baseline: f64,
+        raw_input_ci: f64,
+        user_posture: UserPosture,
+        intent_category: &str,
+    ) -> ModeDetectionResult {
+        // POSTURE PRECEDENCE: Determine mode based on posture and raw input
+        let mode = if user_posture == UserPosture::Audit {
+            // Audit mode: Standard selection based on Charter CI (no Transformation)
+            StructureMode::from_ci_baseline(ci_baseline)
+        } else {
+            // Build or Unconfirmed: Check for Transformation eligibility
+            // Transformation requires: low raw input CI + Operational intent
+            if raw_input_ci < 0.60 && intent_category == "Operational" {
+                StructureMode::Transformation
+            } else {
+                // Fall back to standard CI-based selection
+                StructureMode::from_ci_baseline(ci_baseline)
+            }
+        };
+
+        let confidence = Self::calculate_confidence(raw_input_ci, mode);
+        let signals = Self::generate_signals_extended(
+            ci_baseline,
+            raw_input_ci,
+            mode,
+            user_posture,
+            intent_category,
+        );
 
         let result = ModeDetectionResult {
             mode,
             ci_baseline,
+            raw_input_ci,
             confidence,
             signals,
             detected_at: Utc::now(),
@@ -348,6 +385,12 @@ impl ModeDetector {
 
         Self::log_detection(&result);
         result
+    }
+
+    /// Legacy detect for backward compatibility (uses Charter CI only)
+    #[allow(dead_code)]
+    pub fn detect_legacy(ci_baseline: f64) -> ModeDetectionResult {
+        Self::detect(ci_baseline, ci_baseline, UserPosture::Unconfirmed, "Operational")
     }
 
     fn calculate_confidence(ci: f64, mode: StructureMode) -> f64 {
@@ -362,6 +405,46 @@ impl ModeDetector {
         }
     }
 
+    fn generate_signals_extended(
+        ci_baseline: f64,
+        raw_input_ci: f64,
+        mode: StructureMode,
+        user_posture: UserPosture,
+        intent_category: &str,
+    ) -> Vec<String> {
+        let mut signals = vec![
+            format!("Charter CI: {:.2}", ci_baseline),
+            format!("Raw input CI: {:.2}", raw_input_ci),
+            format!("User posture: {:?}", user_posture),
+            format!("Intent category: {}", intent_category),
+        ];
+
+        match mode {
+            StructureMode::Architecting => {
+                signals.push("Low initial structure detected".to_string());
+                signals.push("Expecting significant content expansion".to_string());
+            }
+            StructureMode::Builder => {
+                signals.push("Medium structure detected".to_string());
+                signals.push("Expecting gap filling and reinforcement".to_string());
+            }
+            StructureMode::Transformation => {
+                signals.push("Transformation mode activated (MODE-001 fix)".to_string());
+                signals.push("Converting rough input into structured deliverables".to_string());
+                signals.push(format!(
+                    "Eligibility: raw_input_ci ({:.2}) < 0.60 AND intent=Operational",
+                    raw_input_ci
+                ));
+            }
+            StructureMode::Refining => {
+                signals.push("High structure detected".to_string());
+                signals.push("Expecting polish and validation focus".to_string());
+            }
+        }
+        signals
+    }
+
+    #[allow(dead_code)]
     fn generate_signals(ci: f64, mode: StructureMode) -> Vec<String> {
         let mut signals = vec![format!("CI baseline: {:.2}", ci)];
         match mode {
@@ -531,33 +614,52 @@ mod tests {
 
     #[test]
     fn test_mode_detection_result_architecting() {
-        let result = ModeDetector::detect(0.25);
+        let result = ModeDetector::detect_legacy(0.25);
         assert_eq!(result.mode, StructureMode::Architecting);
         assert!(result.confidence >= 0.5);
     }
 
     #[test]
     fn test_mode_detection_result_builder() {
-        let result = ModeDetector::detect(0.50);
+        let result = ModeDetector::detect_legacy(0.50);
         assert_eq!(result.mode, StructureMode::Builder);
     }
 
     #[test]
     fn test_mode_detection_result_refining() {
-        let result = ModeDetector::detect(0.80);
+        let result = ModeDetector::detect_legacy(0.80);
         assert_eq!(result.mode, StructureMode::Refining);
     }
 
     #[test]
     fn test_confidence_higher_away_from_boundaries() {
-        let far = ModeDetector::detect(0.10);
-        let near = ModeDetector::detect(0.33);
+        let far = ModeDetector::detect_legacy(0.10);
+        let near = ModeDetector::detect_legacy(0.33);
         assert!(far.confidence > near.confidence);
     }
 
     #[test]
     fn test_signals_contain_ci() {
-        let result = ModeDetector::detect(0.50);
+        let result = ModeDetector::detect_legacy(0.50);
         assert!(result.signals.iter().any(|s| s.contains("0.50")));
+    }
+
+    #[test]
+    fn test_transformation_mode_eligibility() {
+        // Build posture + low raw_input_ci + Operational intent = Transformation
+        let result = ModeDetector::detect(0.80, 0.40, UserPosture::Build, "Operational");
+        assert_eq!(result.mode, StructureMode::Transformation);
+
+        // Audit posture never allows Transformation
+        let result = ModeDetector::detect(0.80, 0.40, UserPosture::Audit, "Operational");
+        assert_ne!(result.mode, StructureMode::Transformation);
+
+        // High raw_input_ci doesn't trigger Transformation
+        let result = ModeDetector::detect(0.80, 0.70, UserPosture::Build, "Operational");
+        assert_ne!(result.mode, StructureMode::Transformation);
+
+        // Non-Operational intent doesn't trigger Transformation
+        let result = ModeDetector::detect(0.80, 0.40, UserPosture::Build, "Analytical");
+        assert_ne!(result.mode, StructureMode::Transformation);
     }
 }

@@ -165,7 +165,7 @@ mod tests {
         use super::super::ModeDetector;
 
         let ci_value = 0.25;
-        let mode_result = ModeDetector::detect(ci_value);
+        let mode_result = ModeDetector::detect_legacy(ci_value);
 
         assert_eq!(mode_result.mode, StructureMode::Architecting);
         assert_eq!(mode_result.ci_baseline, ci_value);
@@ -179,7 +179,7 @@ mod tests {
         use super::super::ModeDetector;
 
         let ci_value = 0.45;
-        let mode_result = ModeDetector::detect(ci_value);
+        let mode_result = ModeDetector::detect_legacy(ci_value);
 
         assert_eq!(mode_result.mode, StructureMode::Builder);
         assert_eq!(mode_result.ci_baseline, ci_value);
@@ -192,7 +192,7 @@ mod tests {
         use super::super::ModeDetector;
 
         let ci_value = 0.80;
-        let mode_result = ModeDetector::detect(ci_value);
+        let mode_result = ModeDetector::detect_legacy(ci_value);
 
         assert_eq!(mode_result.mode, StructureMode::Refining);
         assert_eq!(mode_result.ci_baseline, ci_value);
@@ -206,7 +206,7 @@ mod tests {
 
         // Simulate Step 2 flow: detect mode and lock it
         let ci_baseline = 0.50;
-        let mode_result = ModeDetector::detect(ci_baseline);
+        let mode_result = ModeDetector::detect_legacy(ci_baseline);
 
         // In real orchestrator, these would be set
         let detected_mode = Some(mode_result.mode);
@@ -222,8 +222,8 @@ mod tests {
         use super::super::ModeDetector;
 
         // Far from boundaries = high confidence
-        let far_arch = ModeDetector::detect(0.10);
-        let near_boundary = ModeDetector::detect(0.33);
+        let far_arch = ModeDetector::detect_legacy(0.10);
+        let near_boundary = ModeDetector::detect_legacy(0.33);
 
         // CI=0.10 is further from 0.35 boundary than CI=0.33
         assert!(far_arch.confidence > near_boundary.confidence);
@@ -238,11 +238,11 @@ mod tests {
         use super::super::ModeDetector;
 
         // CI exactly at 0.35 should be Architecting (≤ 0.35)
-        let at_boundary = ModeDetector::detect(0.35);
+        let at_boundary = ModeDetector::detect_legacy(0.35);
         assert_eq!(at_boundary.mode, StructureMode::Architecting);
 
         // CI at 0.36 should be Builder
-        let above_boundary = ModeDetector::detect(0.36);
+        let above_boundary = ModeDetector::detect_legacy(0.36);
         assert_eq!(above_boundary.mode, StructureMode::Builder);
     }
 
@@ -251,11 +251,11 @@ mod tests {
         use super::super::ModeDetector;
 
         // CI at 0.69 should be Builder
-        let below_boundary = ModeDetector::detect(0.69);
+        let below_boundary = ModeDetector::detect_legacy(0.69);
         assert_eq!(below_boundary.mode, StructureMode::Builder);
 
         // CI at 0.70 should be Refining (≥ 0.70)
-        let at_boundary = ModeDetector::detect(0.70);
+        let at_boundary = ModeDetector::detect_legacy(0.70);
         assert_eq!(at_boundary.mode, StructureMode::Refining);
     }
 
@@ -601,7 +601,7 @@ mod tests {
     #[test]
     fn phase4_verify_all_constraints() {
         // CONSTRAINT 1: Transparency Mandate - Mode detection with metadata
-        let result = ModeDetector::detect(0.50);
+        let result = ModeDetector::detect_legacy(0.50);
         assert_eq!(result.mode, StructureMode::Builder, "CI 0.50 should detect Builder mode");
         assert!(result.confidence >= 0.5, "Confidence should be >= 0.5");
         assert!(!result.signals.is_empty(), "Signals should contain detection metadata");

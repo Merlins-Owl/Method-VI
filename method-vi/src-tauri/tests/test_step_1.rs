@@ -104,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
 
     let intent_anchor = orchestrator.intent_anchor.as_ref().unwrap();
     let charter = orchestrator.charter.as_ref().unwrap();
+    let charter_markdown = charter.to_display_markdown();
     let baseline_report = orchestrator.baseline_report.as_ref().unwrap();
     let architecture_map = orchestrator.architecture_map.as_ref().unwrap();
 
@@ -112,9 +113,10 @@ async fn main() -> anyhow::Result<()> {
         intent_anchor.contains("is_immutable: true"),
         "Intent_Anchor should be immutable"
     );
+    // Charter is now structured data, check hash exists instead
     assert!(
-        charter.contains("is_immutable: true"),
-        "Charter should be immutable"
+        !charter.hash.is_empty(),
+        "Charter should have a hash"
     );
     assert!(
         baseline_report.contains("is_immutable: true"),
@@ -148,10 +150,10 @@ async fn main() -> anyhow::Result<()> {
         "Intent_Anchor should have proper headers"
     );
 
-    // Charter should have objectives
+    // Charter should have objectives (check structured data or display markdown)
     assert!(
-        charter.contains("Objective") || charter.contains("Charter"),
-        "Charter should have objectives section"
+        !charter.objectives.is_empty() || charter_markdown.contains("Objective") || charter_markdown.contains("Charter"),
+        "Charter should have objectives"
     );
 
     // Baseline_Report should have E_baseline

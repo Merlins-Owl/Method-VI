@@ -228,6 +228,10 @@ pub struct Orchestrator {
     /// Combined with CI baseline to determine Transformation mode eligibility
     pub user_posture: crate::governance::UserPosture,
 
+    /// CI calculated on raw user input from Step 0 (not Charter)
+    /// Used for mode selection - fixes MODE-001 where Charter CI was always high
+    pub raw_input_ci: Option<f64>,
+
     /// CI baseline recorded at Step 3 (Diagnostic)
     /// Used for delta calculation at Step 4+ (Constraint 2: Delta Baseline Rule)
     pub diagnostic_ci_baseline: Option<f64>,
@@ -356,6 +360,7 @@ impl Orchestrator {
             mode_detection_result: None,       // Session 2.2: Full detection metadata
             mode_locked: false,                // Session 2.2: Locked at Step 2 completion
             user_posture: crate::governance::UserPosture::default(),  // Phase 6: User posture from Step 0
+            raw_input_ci: None,  // Phase 6: MODE-001 fix - CI from raw user input
             diagnostic_ci_baseline: None,      // Session 3.1: Set at Step 3 for delta calculation
             callout_manager: CalloutManager::new(),  // Session 4.1: Progression engine callout tracking
         }
@@ -1014,6 +1019,12 @@ impl Orchestrator {
         // Clone data needed for CharterData to avoid borrow checker issues later
         let intent_summary_for_charter = intent_summary.clone();
 
+        // MODE-001 FIX: Calculate CI on raw user input for mode detection
+        // This captures the actual structure level of the user's input before LLM enhancement
+        let raw_ci = Self::calculate_text_coherence(&intent_summary.user_request);
+        self.raw_input_ci = Some(raw_ci);
+        info!("Raw input CI calculated: {:.2} (from user_request)", raw_ci);
+
         // Validate all agents are configured before proceeding
         if self.scope_agent.is_none() {
             anyhow::bail!("Scope & Pattern Agent not configured");
@@ -1295,10 +1306,18 @@ impl Orchestrator {
                 crate::agents::governance_telemetry::MetricStatus::Fail => "FAIL",
             });
 
-            // Session 2.3: Mode Detection Integration
-            // Detect structure mode from CI baseline (Constraint 1: Transparency Mandate)
-            let mode_result = ModeDetector::detect(ci.value);
-            info!("Mode detection complete: {:?}", mode_result.mode);
+            // Session 2.3: Mode Detection Integration (MODE-001 FIX)
+            // Detect structure mode using raw input CI and posture precedence
+            let raw_ci = self.raw_input_ci.unwrap_or(ci.value);  // Fallback to Charter CI
+            let intent_category = self.get_intent_category();
+            let mode_result = ModeDetector::detect(
+                ci.value,           // Charter CI for thresholds
+                raw_ci,             // Raw input CI for mode selection
+                self.user_posture,
+                &intent_category,
+            );
+            info!("Mode detection complete: {:?} (raw_ci: {:.2}, posture: {:?}, intent: {})",
+                mode_result.mode, raw_ci, self.user_posture, intent_category);
 
             // Store mode in orchestrator (locked for the run)
             self.detected_mode = Some(mode_result.mode);
@@ -1587,6 +1606,70 @@ impl Orchestrator {
         }
 
         objectives
+    }
+
+    /// Calculate coherence score for raw text input (MODE-001 fix)
+    ///
+    /// Simple heuristic-based coherence measurement for user input.
+    /// Used to determine Transformation mode eligibility before LLM processing.
+    fn calculate_text_coherence(text: &str) -> f64 {
+        if text.is_empty() {
+            return 0.0;
+        }
+
+        let mut score = 0.0;
+        let text_lower = text.to_lowercase();
+        let lines: Vec<&str> = text.lines().collect();
+        let word_count = text.split_whitespace().count();
+
+        // Structure indicators (each adds to coherence)
+        // Headers/sections
+        let has_headers = text.contains('#') || text.contains("##");
+        if has_headers { score += 0.15; }
+
+        // Bullet points or numbered lists
+        let has_lists = lines.iter().any(|l| {
+            let trimmed = l.trim();
+            trimmed.starts_with('-') || trimmed.starts_with('*') ||
+            trimmed.starts_with("1.") || trimmed.starts_with("•")
+        });
+        if has_lists { score += 0.15; }
+
+        // Structured keywords indicating organized thought
+        let structure_keywords = ["objective", "goal", "scope", "deliverable", "requirement",
+                                  "constraint", "assumption", "risk", "stakeholder", "success"];
+        let keyword_count = structure_keywords.iter()
+            .filter(|kw| text_lower.contains(*kw))
+            .count();
+        score += (keyword_count as f64 * 0.05).min(0.25);
+
+        // Paragraph structure (multiple paragraphs = more organized)
+        let paragraph_count = text.split("\n\n").filter(|p| !p.trim().is_empty()).count();
+        if paragraph_count >= 3 { score += 0.15; }
+        else if paragraph_count >= 2 { score += 0.10; }
+
+        // Length factor (very short = less coherent, moderate length = more coherent)
+        if word_count >= 100 { score += 0.15; }
+        else if word_count >= 50 { score += 0.10; }
+        else if word_count >= 20 { score += 0.05; }
+
+        // Sentence structure (periods indicate complete thoughts)
+        let sentence_count = text.matches('.').count() + text.matches('?').count();
+        if sentence_count >= 5 { score += 0.10; }
+        else if sentence_count >= 2 { score += 0.05; }
+
+        // Clamp to 0.0-1.0 range
+        score.clamp(0.0, 1.0)
+    }
+
+    /// Get intent category from stored IntentSummary
+    ///
+    /// Returns the intent_category or "Operational" as default.
+    pub fn get_intent_category(&self) -> String {
+        self.intent_summary
+            .as_ref()
+            .map(|s| s.intent_category.clone())
+            .unwrap_or_else(|| "Operational".to_string())
     }
 
     /// Extract objectives from Charter content for relevance checking
