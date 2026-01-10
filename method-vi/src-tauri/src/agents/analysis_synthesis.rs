@@ -74,6 +74,18 @@ pub struct GlossaryEntry {
     pub definition: String,
 }
 
+/// Conflict between user-defined term and AI-generated term
+/// Emitted as Attention callout to alert user without blocking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TermConflict {
+    /// The conflicting term
+    pub term: String,
+    /// User's original definition (from Step 0/1)
+    pub user_definition: String,
+    /// AI-generated definition (from Step 4)
+    pub generated_definition: String,
+}
+
 impl AnalysisSynthesisAgent {
     /// Create a new Analysis & Synthesis Agent
     pub fn new(api_key: String) -> Result<Self> {

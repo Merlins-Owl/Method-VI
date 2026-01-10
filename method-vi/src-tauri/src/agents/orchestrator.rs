@@ -3,9 +3,9 @@ use chrono::Utc;
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 
-use crate::agents::analysis_synthesis::AnalysisSynthesisAgent;
+use crate::agents::analysis_synthesis::{AnalysisSynthesisAgent, GlossaryEntry, TermConflict};
 use crate::agents::governance_telemetry::{CriticalMetrics, GovernanceTelemetryAgent, IASWarning};
-use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
+use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent, UserDefinedTerm};
 use crate::agents::structure_redesign::StructureRedesignAgent;
 use crate::agents::validation_learning::ValidationLearningAgent;
 use crate::context::{ContextManager, Mode, Role, RunContext, Signal as ContextSignal};
@@ -466,6 +466,11 @@ impl Orchestrator {
         info!("Intent captured: {}", intent_summary.primary_goal);
         info!("Confidence: {}", intent_summary.confidence_score);
         info!("Category: {}", intent_summary.intent_category);
+
+        // Extract user-defined terms from raw input (protect user terminology)
+        let user_terms = Self::extract_user_defined_terms(user_intent);
+        let mut intent_summary = intent_summary;
+        intent_summary.user_defined_terms = user_terms;
 
         // Store intent summary
         self.intent_summary = Some(intent_summary.clone());
@@ -1659,6 +1664,216 @@ impl Orchestrator {
         objectives
     }
 
+    /// Extract user-defined terms from raw input text
+    ///
+    /// Looks for patterns where users define terminology:
+    /// - Acronym expansions: "FLAME = Foundation, Leadership, Alignment..."
+    /// - Explicit definitions: "X means Y", "X is defined as Y"
+    /// - Colon definitions: "Term: definition"
+    /// - Parenthetical expansions: "FLAME (Foundation, Leadership...)"
+    ///
+    /// These terms are protected during Step 4 glossary generation to prevent
+    /// the AI from redefining user's established terminology.
+    fn extract_user_defined_terms(text: &str) -> Vec<UserDefinedTerm> {
+        let mut terms = Vec::new();
+
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            // Pattern 1: ACRONYM = expansion (e.g., "FLAME = Foundation, Leadership...")
+            // Matches: 2+ uppercase letters followed by = and text
+            if let Some(eq_pos) = line.find('=') {
+                let before = line[..eq_pos].trim();
+                let after = line[eq_pos + 1..].trim();
+
+                // Check if before is an acronym (2+ uppercase letters, possibly with numbers)
+                if before.len() >= 2
+                    && before.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+                    && !after.is_empty()
+                {
+                    terms.push(UserDefinedTerm {
+                        term: before.to_string(),
+                        definition: after.to_string(),
+                        source_pattern: "acronym_expansion".to_string(),
+                    });
+                    continue;
+                }
+            }
+
+            // Pattern 2: "X means Y" or "X is defined as Y"
+            let lower = line.to_lowercase();
+            if let Some(means_pos) = lower.find(" means ") {
+                let term = line[..means_pos].trim();
+                let definition = line[means_pos + 7..].trim();
+                if !term.is_empty() && !definition.is_empty() && term.split_whitespace().count() <= 3 {
+                    terms.push(UserDefinedTerm {
+                        term: term.to_string(),
+                        definition: definition.to_string(),
+                        source_pattern: "explicit_means".to_string(),
+                    });
+                    continue;
+                }
+            }
+
+            if let Some(defined_pos) = lower.find(" is defined as ") {
+                let term = line[..defined_pos].trim();
+                let definition = line[defined_pos + 15..].trim();
+                if !term.is_empty() && !definition.is_empty() && term.split_whitespace().count() <= 3 {
+                    terms.push(UserDefinedTerm {
+                        term: term.to_string(),
+                        definition: definition.to_string(),
+                        source_pattern: "explicit_defined_as".to_string(),
+                    });
+                    continue;
+                }
+            }
+
+            // Pattern 3: ACRONYM (expansion) - parenthetical expansion
+            // Matches: 2+ uppercase letters followed by (text)
+            if let Some(paren_start) = line.find('(') {
+                if let Some(paren_end) = line.find(')') {
+                    if paren_start < paren_end {
+                        let before = line[..paren_start].trim();
+                        let inside = line[paren_start + 1..paren_end].trim();
+
+                        // Check if before is an acronym
+                        if before.len() >= 2
+                            && before.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+                            && !inside.is_empty()
+                            && inside.len() > before.len() // Expansion should be longer than acronym
+                        {
+                            terms.push(UserDefinedTerm {
+                                term: before.to_string(),
+                                definition: inside.to_string(),
+                                source_pattern: "parenthetical_expansion".to_string(),
+                            });
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Pattern 4: "Term: definition" at start of line (colon definition)
+            // Only match if colon appears early and definition is substantial
+            if let Some(colon_pos) = line.find(':') {
+                if colon_pos > 0 && colon_pos < 30 {
+                    let term = line[..colon_pos].trim();
+                    let definition = line[colon_pos + 1..].trim();
+
+                    // Term should be 1-4 words, definition should be substantial
+                    let term_word_count = term.split_whitespace().count();
+                    if term_word_count >= 1
+                        && term_word_count <= 4
+                        && definition.len() > term.len()
+                        && definition.split_whitespace().count() >= 3
+                    {
+                        // Avoid false positives from common patterns
+                        let term_lower = term.to_lowercase();
+                        if !term_lower.starts_with("note")
+                            && !term_lower.starts_with("example")
+                            && !term_lower.starts_with("step")
+                            && !term_lower.starts_with("section")
+                        {
+                            terms.push(UserDefinedTerm {
+                                term: term.to_string(),
+                                definition: definition.to_string(),
+                                source_pattern: "colon_definition".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Deduplicate by term (case-insensitive)
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        terms.retain(|t| {
+            let key = t.term.to_lowercase();
+            if seen.contains(&key) {
+                false
+            } else {
+                seen.insert(key);
+                true
+            }
+        });
+
+        if !terms.is_empty() {
+            info!(
+                "Extracted {} user-defined term(s) from input: {:?}",
+                terms.len(),
+                terms.iter().map(|t| &t.term).collect::<Vec<_>>()
+            );
+        }
+
+        terms
+    }
+
+    /// Check for conflicts between user-defined terms and AI-generated glossary
+    ///
+    /// Compares user terms (extracted at Step 0/1) against the glossary generated
+    /// at Step 4. A conflict exists when the same term has different definitions.
+    ///
+    /// Returns a list of conflicts that should be surfaced as Attention callouts.
+    fn check_term_conflicts(
+        user_terms: &[UserDefinedTerm],
+        generated_glossary: &[GlossaryEntry],
+    ) -> Vec<TermConflict> {
+        let mut conflicts = Vec::new();
+
+        for user_term in user_terms {
+            // Case-insensitive term matching
+            let user_term_lower = user_term.term.to_lowercase();
+
+            for gen_entry in generated_glossary {
+                let gen_term_lower = gen_entry.term.to_lowercase();
+
+                // Check if terms match (case-insensitive)
+                if user_term_lower == gen_term_lower {
+                    // Check if definitions are meaningfully different
+                    // Normalize whitespace and case for comparison
+                    let user_def_normalized: String = user_term
+                        .definition
+                        .to_lowercase()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let gen_def_normalized: String = gen_entry
+                        .definition
+                        .to_lowercase()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+
+                    // If definitions differ significantly, it's a conflict
+                    // Simple check: if neither contains the other, they're different
+                    if !user_def_normalized.contains(&gen_def_normalized)
+                        && !gen_def_normalized.contains(&user_def_normalized)
+                    {
+                        conflicts.push(TermConflict {
+                            term: user_term.term.clone(),
+                            user_definition: user_term.definition.clone(),
+                            generated_definition: gen_entry.definition.clone(),
+                        });
+                    }
+                    break; // Found matching term, no need to check further
+                }
+            }
+        }
+
+        if !conflicts.is_empty() {
+            warn!(
+                "Found {} term conflict(s): {:?}",
+                conflicts.len(),
+                conflicts.iter().map(|c| &c.term).collect::<Vec<_>>()
+            );
+        }
+
+        conflicts
+    }
+
     /// Calculate coherence score for raw text input (MODE-001 fix)
     ///
     /// Simple heuristic-based coherence measurement for user input.
@@ -1942,6 +2157,7 @@ impl Orchestrator {
                 "Scope creep items".to_string(),
             ],
             edge_cases: vec![],
+            user_defined_terms: vec![], // Will be populated in execute_step_0
         };
 
         // Compute hash
@@ -2485,6 +2701,42 @@ impl Orchestrator {
         self.limitations = Some(synthesis_result.limitations.join("\n"));
 
         info!("Synthesis artifacts stored");
+
+        // Check for term conflicts between user-defined terms and generated glossary
+        if let Some(ref intent_summary) = self.intent_summary {
+            if !intent_summary.user_defined_terms.is_empty() {
+                let conflicts = Self::check_term_conflicts(
+                    &intent_summary.user_defined_terms,
+                    &synthesis_result.glossary,
+                );
+
+                // Emit Attention callout for each conflict (non-blocking)
+                if !conflicts.is_empty() {
+                    // Get current mode for callout
+                    let mode = self
+                        .mode_detection_result
+                        .as_ref()
+                        .map(|r| r.mode)
+                        .unwrap_or(StructureMode::Refining);
+
+                    for conflict in &conflicts {
+                        let callout = Callout::term_conflict(
+                            &conflict.term,
+                            &conflict.user_definition,
+                            &conflict.generated_definition,
+                            Step::Step4_Synthesis,
+                            mode,
+                        );
+                        self.callout_manager.add(callout);
+                    }
+
+                    info!(
+                        "Emitted {} term conflict callout(s) - user authority may have been overridden",
+                        conflicts.len()
+                    );
+                }
+            }
+        }
 
         // Calculate metrics
         info!("Step 4: Calculating metrics...");
@@ -3382,19 +3634,39 @@ impl Orchestrator {
         // 5. Extract Final Metrics (from validation results if available)
         let final_metrics = self.extract_final_metrics();
 
-        // 6. Determine Success Status
+        // 6. Calculate final CI and closure status
+        let final_ci = final_metrics.get("CI").copied().unwrap_or(0.0);
+        let ci_threshold = 0.70; // Minimum passing threshold
+
+        let closure_status = if self.latest_metrics.is_none() {
+            ClosureStatus::NoMetrics
+        } else {
+            ClosureStatus::from_ci(final_ci, ci_threshold)
+        };
+
+        // 7. Determine Success Status (legacy field, kept for compatibility)
         let success = self.determine_run_success(&final_metrics);
 
-        // 7. Update Database
+        // 8. Update Database
         self.update_database_closure(&final_metrics, success).await?;
         info!("✓ Database updated");
 
-        // Log before building result (while final_metrics is still accessible)
+        // 9. Log final metrics summary
+        info!("=== Run Closure: Final Metrics ===");
+        info!(
+            "CI: {:.2}, IAS: {:.2}, EFI: {:.2}, SEC: {:.2}, PCI: {:.2}, EV: {:.2}",
+            final_metrics.get("CI").unwrap_or(&0.0),
+            final_metrics.get("IAS").unwrap_or(&0.0),
+            final_metrics.get("EFI").unwrap_or(&0.0),
+            final_metrics.get("SEC").unwrap_or(&0.0),
+            final_metrics.get("PCI").unwrap_or(&0.0),
+            final_metrics.get("EV").unwrap_or(&0.0),
+        );
+        info!("Closure Status: {:?}", closure_status);
+        info!("CI Threshold: {:.2}, Final CI: {:.2}", ci_threshold, final_ci);
         info!("=== CLOSURE COMPLETE ===");
-        info!("Success: {}", success);
-        info!("Final CI: {:?}", final_metrics.get("CI"));
 
-        // 8. Build Closure Result
+        // 10. Build Closure Result
         let result = ClosureResult {
             run_id: self.run_id.clone(),
             final_ledger,
@@ -3402,6 +3674,8 @@ impl Orchestrator {
             archived_artifacts,
             statistics,
             final_metrics,
+            final_ci,
+            closure_status,
             success,
             completed_at: Utc::now().to_rfc3339(),
         };
@@ -3531,14 +3805,54 @@ impl Orchestrator {
     fn extract_final_metrics(&self) -> std::collections::HashMap<String, f64> {
         let mut metrics = std::collections::HashMap::new();
 
-        // Placeholder - would extract from validation_agent.validation_results
-        // For now, return empty or default values
-        metrics.insert("CI".to_string(), 0.0);
-        metrics.insert("EV".to_string(), 0.0);
-        metrics.insert("IAS".to_string(), 0.0);
-        metrics.insert("EFI".to_string(), 0.0);
-        metrics.insert("SEC".to_string(), 0.0);
-        metrics.insert("PCI".to_string(), 0.0);
+        if let Some(ref latest) = self.latest_metrics {
+            // Extract actual values from CriticalMetrics
+            metrics.insert(
+                "CI".to_string(),
+                latest.ci.as_ref().map(|m| m.value).unwrap_or(0.0),
+            );
+            metrics.insert(
+                "IAS".to_string(),
+                latest.ias.as_ref().map(|m| m.value).unwrap_or(0.0),
+            );
+            metrics.insert(
+                "EFI".to_string(),
+                latest.efi.as_ref().map(|m| m.value).unwrap_or(0.0),
+            );
+            metrics.insert(
+                "SEC".to_string(),
+                latest.sec.as_ref().map(|m| m.value).unwrap_or(0.0),
+            );
+            metrics.insert(
+                "PCI".to_string(),
+                latest.pci.as_ref().map(|m| m.value).unwrap_or(0.0),
+            );
+            metrics.insert(
+                "EV".to_string(),
+                latest.ev.as_ref().map(|m| m.value).unwrap_or(0.0),
+            );
+
+            info!(
+                "Extracted final metrics - CI: {:.2}, IAS: {:.2}, EFI: {:.2}, SEC: {:.2}, PCI: {:.2}, EV: {:.2}",
+                metrics.get("CI").unwrap_or(&0.0),
+                metrics.get("IAS").unwrap_or(&0.0),
+                metrics.get("EFI").unwrap_or(&0.0),
+                metrics.get("SEC").unwrap_or(&0.0),
+                metrics.get("PCI").unwrap_or(&0.0),
+                metrics.get("EV").unwrap_or(&0.0),
+            );
+        } else {
+            // Log warning - no metrics available at closure
+            warn!("No metrics available at closure - this may indicate steps were skipped or metrics calculation failed");
+
+            // Return zeros as fallback
+            metrics.insert("CI".to_string(), 0.0);
+            metrics.insert("IAS".to_string(), 0.0);
+            metrics.insert("EFI".to_string(), 0.0);
+            metrics.insert("SEC".to_string(), 0.0);
+            metrics.insert("PCI".to_string(), 0.0);
+            metrics.insert("EV".to_string(), 0.0);
+        }
 
         metrics
     }
@@ -3569,6 +3883,28 @@ impl Orchestrator {
     }
 }
 
+/// Closure status indicating run outcome
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ClosureStatus {
+    /// CI >= threshold - run met quality standards
+    Pass,
+    /// CI < threshold but metrics preserved - run completed but below standards
+    FailWithMetrics,
+    /// No metrics available - indicates problem with run execution
+    NoMetrics,
+}
+
+impl ClosureStatus {
+    /// Create status from CI value and threshold
+    pub fn from_ci(ci: f64, threshold: f64) -> Self {
+        if ci >= threshold {
+            ClosureStatus::Pass
+        } else {
+            ClosureStatus::FailWithMetrics
+        }
+    }
+}
+
 /// Result from execute_closure()
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClosureResult {
@@ -3578,6 +3914,10 @@ pub struct ClosureResult {
     pub archived_artifacts: Vec<ArchivedArtifact>,
     pub statistics: RunStatistics,
     pub final_metrics: std::collections::HashMap<String, f64>,
+    /// Final CI value for quick reference
+    pub final_ci: f64,
+    /// Closure status indicating run outcome
+    pub closure_status: ClosureStatus,
     pub success: bool,
     pub completed_at: String,
 }

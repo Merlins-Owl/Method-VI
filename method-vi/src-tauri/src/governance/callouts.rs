@@ -169,6 +169,44 @@ impl Callout {
             hard_block: true, // Cannot proceed even with acknowledgment
         }
     }
+
+    /// Create an Attention callout for terminology conflict
+    /// Non-blocking - alerts user that their term was redefined but allows proceeding
+    pub fn term_conflict(
+        term: &str,
+        user_definition: &str,
+        generated_definition: &str,
+        step: Step,
+        mode: StructureMode,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            tier: CalloutTier::Attention,
+            original_tier: CalloutTier::Attention,
+            metric_name: "TERM_CONFLICT".to_string(),
+            current_value: 1.0, // 1 = conflict detected
+            previous_value: None,
+            delta: None,
+            threshold_context: format!("Term '{}' redefined", term),
+            explanation: format!(
+                "You defined '{}' as: \"{}\"\n\
+                Analysis generated: \"{}\"",
+                term, user_definition, generated_definition
+            ),
+            recommendation: format!(
+                "Review the generated definition. If your definition is authoritative, \
+                consider updating the Glossary to use your definition of '{}'.",
+                term
+            ),
+            requires_acknowledgment: false, // Attention tier doesn't require acknowledgment
+            acknowledged: false,
+            acknowledged_at: None,
+            step,
+            mode,
+            created_at: Utc::now(),
+            hard_block: false, // Does not block progression
+        }
+    }
 }
 
 /// Acknowledgment record for audit trail

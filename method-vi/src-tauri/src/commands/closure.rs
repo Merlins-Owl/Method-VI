@@ -4,7 +4,7 @@ use tauri::State;
 
 use crate::commands::step0::OrchestratorState;
 use crate::agents::orchestrator::{
-    ClosureResult, AuditEntry, ArchivedArtifact, RunStatistics,
+    ClosureResult, ClosureStatus, AuditEntry, ArchivedArtifact, RunStatistics,
 };
 
 /// Response from execute_closure command
@@ -16,6 +16,10 @@ pub struct ClosureResponse {
     pub archived_artifacts: Vec<ArchivedArtifact>,
     pub statistics: RunStatistics,
     pub final_metrics: std::collections::HashMap<String, f64>,
+    /// Final CI value for quick reference
+    pub final_ci: f64,
+    /// Closure status indicating run outcome
+    pub closure_status: ClosureStatus,
     pub success: bool,
     pub completed_at: String,
 }
@@ -29,6 +33,8 @@ impl From<ClosureResult> for ClosureResponse {
             archived_artifacts: result.archived_artifacts,
             statistics: result.statistics,
             final_metrics: result.final_metrics,
+            final_ci: result.final_ci,
+            closure_status: result.closure_status,
             success: result.success,
             completed_at: result.completed_at,
         }

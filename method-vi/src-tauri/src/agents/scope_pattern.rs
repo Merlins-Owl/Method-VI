@@ -6,6 +6,18 @@ use sha2::{Digest, Sha256};
 
 use crate::api::AnthropicClient;
 
+/// A term defined by the user in their original request
+/// Extracted during Step 0/1 and protected during glossary generation
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UserDefinedTerm {
+    /// The term or acronym (e.g., "FLAME")
+    pub term: String,
+    /// The user's definition or expansion (e.g., "Foundation, Leadership, Alignment...")
+    pub definition: String,
+    /// How the term was detected (e.g., "acronym_expansion", "explicit_definition")
+    pub source_pattern: String,
+}
+
 /// Intent Summary artifact produced by Scope & Pattern Agent
 ///
 /// This is the structured output from Step 0 intent interpretation.
@@ -47,6 +59,11 @@ pub struct IntentSummary {
     pub likely_in_scope: Vec<String>,
     pub likely_out_of_scope: Vec<String>,
     pub edge_cases: Vec<String>,
+
+    // User-defined terminology (extracted from raw input)
+    // These terms are protected during Step 4 glossary generation
+    #[serde(default)]
+    pub user_defined_terms: Vec<UserDefinedTerm>,
 }
 
 impl IntentSummary {
@@ -386,6 +403,7 @@ Respond in the EXACT format above, preserving the section headers."#,
             likely_in_scope,
             likely_out_of_scope,
             edge_cases,
+            user_defined_terms: vec![], // Populated by orchestrator after extraction
         };
 
         // Compute hash of content body
