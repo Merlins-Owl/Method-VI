@@ -50,6 +50,9 @@ pub enum StructureMode {
     Architecting,
     /// CI baseline 0.36-0.69: Gap filling focus, moderate expansion
     Builder,
+    /// Intent=Operational + Low Input CI + Build Posture.
+    /// Content generation focus. Applies relaxed thresholds during Steps 3-5.
+    Transformation,
     /// CI baseline ≥ 0.70: Polish and validation, tightening expected
     Refining,
 }
@@ -77,6 +80,7 @@ impl StructureMode {
         match self {
             StructureMode::Architecting => "Architecting",
             StructureMode::Builder => "Builder",
+            StructureMode::Transformation => "Transformation",
             StructureMode::Refining => "Refining",
         }
     }
@@ -88,6 +92,8 @@ impl StructureMode {
                 "Engaging exploratory processing. Method-VI will focus on organizing and structuring your ideas.",
             StructureMode::Builder =>
                 "Engaging builder processing. Method-VI will focus on filling gaps and strengthening your framework.",
+            StructureMode::Transformation =>
+                "Transformation mode: Converting rough input into structured deliverables. Relaxed thresholds during content generation.",
             StructureMode::Refining =>
                 "Engaging refinement processing. Method-VI will focus on validation and polish.",
         }
@@ -181,6 +187,15 @@ impl ThresholdResolver {
                 ias_warn: 0.50,
                 ias_critical: 0.35,
             },
+            StructureMode::Transformation => Thresholds {
+                // Same as Builder - content generation focus
+                ci_pass: 0.65,
+                ci_warn: 0.50,
+                ci_critical: 0.35,
+                ias_pass: 0.65,
+                ias_warn: 0.50,
+                ias_critical: 0.35,
+            },
             StructureMode::Refining => Thresholds {
                 // Strict thresholds - polished content expected
                 ci_pass: 0.80,
@@ -248,7 +263,7 @@ impl ModeDetector {
         // Higher confidence when farther from boundaries (0.35, 0.70)
         match mode {
             StructureMode::Architecting => ((0.35 - ci) / 0.35).clamp(0.5, 1.0),
-            StructureMode::Builder => {
+            StructureMode::Builder | StructureMode::Transformation => {
                 let dist = (ci - 0.35).min(0.70 - ci);
                 (dist / 0.175 + 0.5).clamp(0.5, 1.0)
             }
@@ -267,6 +282,10 @@ impl ModeDetector {
                 signals.push("Medium structure detected".to_string());
                 signals.push("Expecting gap filling and reinforcement".to_string());
             }
+            StructureMode::Transformation => {
+                signals.push("Transformation mode activated".to_string());
+                signals.push("Converting rough input into structured deliverables".to_string());
+            }
             StructureMode::Refining => {
                 signals.push("High structure detected".to_string());
                 signals.push("Expecting polish and validation focus".to_string());
@@ -279,6 +298,7 @@ impl ModeDetector {
         let level = match result.mode {
             StructureMode::Architecting => "Low",
             StructureMode::Builder => "Medium",
+            StructureMode::Transformation => "Transformation",
             StructureMode::Refining => "High",
         };
         // Constraint 1: Transparency Mandate
