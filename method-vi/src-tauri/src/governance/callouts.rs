@@ -82,6 +82,9 @@ pub struct Callout {
     pub mode: StructureMode,
     /// When the callout was created
     pub created_at: DateTime<Utc>,
+    /// If true, cannot be cleared by acknowledgment alone - requires condition to be resolved
+    /// Used for hard-block gates like missing required deliverables
+    pub hard_block: bool,
 }
 
 impl Callout {
@@ -117,12 +120,54 @@ impl Callout {
             step,
             mode,
             created_at: Utc::now(),
+            hard_block: false, // Default: acknowledgment clears the callout
         }
     }
 
     /// Check if this callout was downgraded by noise filter
     pub fn was_downgraded(&self) -> bool {
         self.original_tier != self.tier
+    }
+
+    /// Set hard_block flag (builder pattern)
+    pub fn with_hard_block(mut self, hard_block: bool) -> Self {
+        self.hard_block = hard_block;
+        self
+    }
+
+    /// Create a hard-block callout for missing deliverables
+    /// Hard-block callouts cannot be cleared by acknowledgment - the condition must be resolved
+    pub fn missing_deliverable(
+        missing_names: Vec<String>,
+        step: Step,
+        mode: StructureMode,
+    ) -> Self {
+        let count = missing_names.len();
+        let names_list = missing_names.join(", ");
+
+        Self {
+            id: Uuid::new_v4().to_string(),
+            tier: CalloutTier::Critical,
+            original_tier: CalloutTier::Critical,
+            metric_name: "DELIVERABLE_CHECK".to_string(),
+            current_value: 0.0, // 0 = missing
+            previous_value: None,
+            delta: None,
+            threshold_context: format!("{} required deliverable(s) missing", count),
+            explanation: format!(
+                "The following required deliverables are missing: {}. \
+                These must exist before proceeding to Step 6 validation.",
+                names_list
+            ),
+            recommendation: "Complete the missing deliverables in previous steps before continuing.".to_string(),
+            requires_acknowledgment: true,
+            acknowledged: false,
+            acknowledged_at: None,
+            step,
+            mode,
+            created_at: Utc::now(),
+            hard_block: true, // Cannot proceed even with acknowledgment
+        }
     }
 }
 
@@ -161,6 +206,8 @@ pub struct CalloutSummary {
     pub total: usize,
     pub by_tier: CalloutCountByTier,
     pub pending_acknowledgments: usize,
+    /// Number of hard-block callouts (cannot be cleared by acknowledgment)
+    pub hard_blocks: usize,
     pub can_proceed: bool,
 }
 
@@ -170,6 +217,7 @@ impl Default for CalloutSummary {
             total: 0,
             by_tier: CalloutCountByTier::default(),
             pending_acknowledgments: 0,
+            hard_blocks: 0,
             can_proceed: true, // No callouts = can proceed
         }
     }
@@ -199,9 +247,27 @@ impl CalloutManager {
             .collect()
     }
 
-    /// Check if we can proceed (no unacknowledged Critical callouts)
+    /// Check if any hard-block callouts exist (cannot be cleared by acknowledgment)
+    pub fn has_hard_blocks(&self) -> bool {
+        self.callouts.iter().any(|c| c.hard_block && c.tier == CalloutTier::Critical)
+    }
+
+    /// Get all hard-block callouts
+    pub fn get_hard_blocks(&self) -> Vec<&Callout> {
+        self.callouts
+            .iter()
+            .filter(|c| c.hard_block && c.tier == CalloutTier::Critical)
+            .collect()
+    }
+
+    /// Clear hard-block callouts (called when the blocking condition is resolved)
+    pub fn clear_hard_blocks(&mut self) {
+        self.callouts.retain(|c| !c.hard_block);
+    }
+
+    /// Check if we can proceed (no unacknowledged Critical callouts AND no hard blocks)
     pub fn can_proceed(&self) -> bool {
-        self.get_pending_acknowledgments().is_empty()
+        self.get_pending_acknowledgments().is_empty() && !self.has_hard_blocks()
     }
 
     /// Acknowledge a callout by ID
@@ -301,6 +367,7 @@ impl CalloutManager {
                 critical: self.count_by_tier(CalloutTier::Critical),
             },
             pending_acknowledgments: self.get_pending_acknowledgments().len(),
+            hard_blocks: self.get_hard_blocks().len(),
             can_proceed: self.can_proceed(),
         }
     }

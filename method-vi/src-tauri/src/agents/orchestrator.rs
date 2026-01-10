@@ -9,7 +9,7 @@ use crate::agents::scope_pattern::{IntentSummary, ScopePatternAgent};
 use crate::agents::structure_redesign::StructureRedesignAgent;
 use crate::agents::validation_learning::ValidationLearningAgent;
 use crate::context::{ContextManager, Mode, Role, RunContext, Signal as ContextSignal};
-use crate::governance::{CalloutManager, ModeDetector};
+use crate::governance::{Callout, CalloutManager, ModeDetector, Step, StructureMode};
 use crate::ledger::{EntryType, LedgerManager, LedgerPayload, LedgerState};
 use crate::signals::{SignalPayload, SignalRouter, SignalType};
 
@@ -695,7 +695,55 @@ impl Orchestrator {
                 Ok(true)
             }
             RunState::Step5GatePending => {
-                // Record gate approval in ledger
+                // HARD-BLOCK CHECK: Verify all required deliverables exist before Step 6
+                if let Err(missing) = self.check_required_deliverables() {
+                    info!(
+                        "Step 5 gate blocked: {} required deliverable(s) missing",
+                        missing.len()
+                    );
+
+                    // Get current mode for callout (default to Refining if not detected)
+                    let mode = self
+                        .mode_detection_result
+                        .as_ref()
+                        .map(|r| r.mode)
+                        .unwrap_or(StructureMode::Refining);
+
+                    // Emit hard-block callout - cannot be cleared by acknowledgment
+                    let callout = Callout::missing_deliverable(missing.clone(), Step::Step5_Redesign, mode);
+                    self.callout_manager.add(callout);
+
+                    // Record blocked transition in ledger
+                    let payload = LedgerPayload {
+                        action: "gate_blocked".to_string(),
+                        inputs: Some(serde_json::json!({
+                            "gate": "Framework_Ready",
+                            "approver": approver,
+                            "reason": "missing_deliverables",
+                            "missing": missing,
+                        })),
+                        outputs: None,
+                        rationale: Some(
+                            "Gate blocked - required deliverables must exist before Step 6"
+                                .to_string(),
+                        ),
+                    };
+
+                    self.ledger.create_entry(
+                        &self.run_id,
+                        EntryType::Decision,
+                        Some(5),
+                        Some("Observer"),
+                        payload,
+                    );
+
+                    anyhow::bail!(
+                        "Cannot proceed to Step 6: missing required deliverables. \
+                        Complete the missing artifacts before continuing."
+                    );
+                }
+
+                // All deliverables present - record gate approval in ledger
                 let payload = LedgerPayload {
                     action: "gate_approved".to_string(),
                     inputs: Some(serde_json::json!({
@@ -713,6 +761,9 @@ impl Orchestrator {
                     Some("Observer"),
                     payload,
                 );
+
+                // Clear any previous hard-block callouts (condition resolved)
+                self.callout_manager.clear_hard_blocks();
 
                 // Transition to Step 6
                 self.state = RunState::Step6Active;
@@ -1670,6 +1721,66 @@ impl Orchestrator {
             .as_ref()
             .map(|s| s.intent_category.clone())
             .unwrap_or_else(|| "Operational".to_string())
+    }
+
+    /// Check required deliverables before Step 6 transition
+    ///
+    /// Validates that all required artifacts defined in CharterData.expected_artifacts
+    /// actually exist on the Orchestrator. Returns Ok(()) if all present, or Err
+    /// with list of missing deliverable names.
+    ///
+    /// This is a hard-block check - missing deliverables cannot be bypassed by acknowledgment.
+    pub fn check_required_deliverables(&self) -> Result<(), Vec<String>> {
+        let charter = match &self.charter {
+            Some(c) => c,
+            None => return Err(vec!["Charter not found".to_string()]),
+        };
+
+        let mut missing: Vec<String> = Vec::new();
+
+        for artifact in charter.get_required_artifacts() {
+            let exists = match artifact.artifact_key.as_str() {
+                // Step 1 artifacts
+                "intent_anchor" => self.intent_anchor.is_some(),
+                "charter" => true, // Already checked above
+                "baseline_report" => self.baseline_report.is_some(),
+                "architecture_map" => self.architecture_map.is_some(),
+                // Step 2 artifacts
+                "governance_summary" => self.governance_summary.is_some(),
+                "domain_snapshots" => self.domain_snapshots.is_some(),
+                // Step 3 artifacts
+                "integrated_diagnostic" => self.integrated_diagnostic.is_some(),
+                "lens_efficacy_report" => self.lens_efficacy_report.is_some(),
+                // Step 4 artifacts
+                "core_thesis" => self.core_thesis.is_some(),
+                "operating_principles" => self.operating_principles.is_some(),
+                "model_geometry" => self.model_geometry.is_some(),
+                "causal_spine" => self.causal_spine.is_some(),
+                "north_star_narrative" => self.north_star_narrative.is_some(),
+                "glossary" => self.glossary.is_some(),
+                "limitations" => self.limitations.is_some(),
+                // Step 5 artifacts
+                "framework_architecture" => self.framework_architecture.is_some(),
+                // Unknown keys pass (don't block on unmapped artifacts)
+                _ => {
+                    debug!(
+                        "Unknown artifact key '{}' in Charter - skipping validation",
+                        artifact.artifact_key
+                    );
+                    true
+                }
+            };
+
+            if !exists {
+                missing.push(artifact.display_name.clone());
+            }
+        }
+
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(missing)
+        }
     }
 
     /// Extract objectives from Charter content for relevance checking
