@@ -80,6 +80,9 @@ pub fn run() {
             commands::detect_mode,
             commands::set_user_posture,
             commands::get_user_posture,
+            commands::get_gate_preview,
+            commands::get_hard_blocks,
+            commands::submit_gate_decision,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

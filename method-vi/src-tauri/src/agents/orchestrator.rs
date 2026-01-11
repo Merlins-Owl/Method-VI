@@ -1938,6 +1938,176 @@ impl Orchestrator {
             .unwrap_or_else(|| "Operational".to_string())
     }
 
+    /// Get summary of all artifacts created during the run
+    ///
+    /// Returns a list of ArtifactSummary for display in gate preview UI.
+    /// Fidelity is determined by artifact content presence and type.
+    pub fn get_artifacts_summary(&self) -> Vec<ArtifactSummary> {
+        let mut summaries = Vec::new();
+
+        // Step 0 artifacts
+        if self.intent_summary.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "intent_summary".to_string(),
+                display_name: "Intent Summary".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        // Step 1 artifacts
+        if self.charter.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "charter".to_string(),
+                display_name: "Charter".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.intent_anchor.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "intent_anchor".to_string(),
+                display_name: "Intent Anchor".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.baseline_report.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "baseline_report".to_string(),
+                display_name: "Baseline Report".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.architecture_map.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "architecture_map".to_string(),
+                display_name: "Architecture Map".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        // Step 2 artifacts
+        if self.governance_summary.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "governance_summary".to_string(),
+                display_name: "Governance Summary".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.domain_snapshots.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "domain_snapshots".to_string(),
+                display_name: "Domain Snapshots".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        // Step 3 artifacts
+        if self.integrated_diagnostic.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "integrated_diagnostic".to_string(),
+                display_name: "Integrated Diagnostic".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.lens_efficacy_report.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "lens_efficacy_report".to_string(),
+                display_name: "Lens Efficacy Report".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        // Step 4 artifacts
+        if self.core_thesis.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "core_thesis".to_string(),
+                display_name: "Core Thesis".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.operating_principles.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "operating_principles".to_string(),
+                display_name: "Operating Principles".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.model_geometry.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "model_geometry".to_string(),
+                display_name: "Model Geometry".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.glossary.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "glossary".to_string(),
+                display_name: "Glossary".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.north_star_narrative.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "north_star_narrative".to_string(),
+                display_name: "North Star Narrative".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        // Step 5 artifacts
+        if self.framework_architecture.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "framework_architecture".to_string(),
+                display_name: "Framework Architecture".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        // Step 6 artifacts
+        if self.validation_matrix.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "validation_matrix".to_string(),
+                display_name: "Validation Matrix".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        if self.validation_outcome.is_some() {
+            summaries.push(ArtifactSummary {
+                artifact_key: "validation_outcome".to_string(),
+                display_name: "Validation Outcome".to_string(),
+                fidelity: ArtifactFidelity::Final,
+                preview_snippet: None,
+            });
+        }
+
+        summaries
+    }
+
     /// Check required deliverables before Step 6 transition
     ///
     /// Validates that all required artifacts defined in CharterData.expected_artifacts
@@ -3920,6 +4090,23 @@ pub struct ClosureResult {
     pub closure_status: ClosureStatus,
     pub success: bool,
     pub completed_at: String,
+}
+
+/// Artifact fidelity level for gate preview
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ArtifactFidelity {
+    Draft,
+    Placeholder,
+    Final,
+}
+
+/// Summary of an artifact for gate preview
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtifactSummary {
+    pub artifact_key: String,
+    pub display_name: String,
+    pub fidelity: ArtifactFidelity,
+    pub preview_snippet: Option<String>,
 }
 
 /// Single entry in the audit trail

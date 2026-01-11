@@ -96,3 +96,33 @@ export const MODE_COLORS: Record<StructureMode, { bg: string; text: string }> = 
   Builder: { bg: 'bg-blue-900/30', text: 'text-blue-400' },
   Refining: { bg: 'bg-green-900/30', text: 'text-green-400' },
 };
+
+/**
+ * Artifact fidelity level
+ */
+export type ArtifactFidelity = 'Draft' | 'Placeholder' | 'Final';
+
+/**
+ * Summary of an artifact for gate preview
+ */
+export interface ArtifactSummary {
+  artifact_key: string;
+  display_name: string;
+  fidelity: ArtifactFidelity;
+  preview_snippet?: string;
+}
+
+/**
+ * Gate preview data - shows what was created and what's missing
+ */
+export interface GatePreview {
+  step: number;
+  artifacts_created: ArtifactSummary[];
+  missing_required: string[];
+  has_hard_blocks: boolean;
+}
+
+/**
+ * Gate decision types
+ */
+export type GateDecision = 'approve' | 'request_changes' | 'start_over';
